@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run build to ensure everything compiles
+echo "🏗️  Building application..."
+npm run build || exit 1
+
+# Run full test suite
+echo "🧪 Running full test suite..."
+npm test -- --coverage || exit 1
+
+# Check test coverage threshold
+echo "📊 Checking test coverage..."
+coverage=$(npm test -- --coverage --coverageReporters=text-summary 2>&1 | grep -oP 'All files\s+\|\s+\d+\.\d+%' | grep -oP '\d+\.\d+' | head -1)
+if [ -z "$coverage" ]; then
+  echo "⚠️  Could not determine coverage, continuing..."
+else
+  coverage_int=$(echo "$coverage" | cut -d. -f1)
+  if [ "$coverage_int" -lt 80 ]; then
+    echo "❌ Test coverage is below 80% (current: ${coverage}%)"
+    echo "Please add more tests before pushing."
+    exit 1
+  fi
+  echo "✅ Test coverage: ${coverage}%"
+fi
+
+echo "✅ Pre-push checks passed!"
+

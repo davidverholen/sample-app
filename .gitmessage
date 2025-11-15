@@ -1,0 +1,57 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# Types:
+#   feat:     New feature
+#   fix:       Bug fix
+#   docs:      Documentation changes
+#   style:     Code style changes (formatting, missing semicolons, etc.)
+#   refactor:  Code refactoring
+#   perf:      Performance improvements
+#   test:      Adding or updating tests
+#   build:     Build system or dependency changes
+#   ci:        CI/CD configuration changes
+#   chore:     Other changes that don't modify src or test files
+#   revert:    Revert a previous commit
+#
+# Scope (optional):
+#   auth:      Authentication related
+#   api:       API routes
+#   ui:        UI components
+#   db:        Database changes
+#   config:    Configuration changes
+#   deps:      Dependencies
+#
+# Subject:
+#   - Maximum 72 characters
+#   - Use imperative mood ("add" not "added" or "adds")
+#   - No period at the end
+#   - Reference issue number if applicable: #123
+#
+# Body (optional but recommended for complex changes):
+#   - Explain what and why, not how
+#   - Wrap at 72 characters
+#   - Reference issues: Closes #123, Fixes #456, Relates to #789
+#
+# Footer (optional):
+#   - Breaking changes: BREAKING CHANGE: description
+#   - Issue references: Closes #123, Fixes #456
+#
+# Examples:
+#   feat(auth): add OAuth2 login support
+#
+#   Implement Google and GitHub OAuth2 providers using NextAuth.js.
+#   Adds new provider configuration and user profile mapping.
+#
+#   Closes #123
+#
+#   fix(api): resolve user creation validation error
+#
+#   The email validation was incorrectly rejecting valid email formats.
+#   Updated Zod schema to match RFC 5322 specification.
+#
+#   Fixes #456
+

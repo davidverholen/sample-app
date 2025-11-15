@@ -1,0 +1,147 @@
+{
+  "team": {
+    "name": "Next.js SaaS Development Team",
+    "version": "1.0.0",
+    "description": "A comprehensive team of AI agents specialized in building complex Next.js SaaS applications",
+    "project_type": "Next.js SaaS Application",
+    "tech_stack": {
+      "framework": "Next.js 14+ (App Router)",
+      "language": "TypeScript",
+      "styling": "Tailwind CSS",
+      "database": "PostgreSQL/Prisma",
+      "authentication": "NextAuth.js / Auth.js",
+      "state_management": "Zustand / React Context",
+      "testing": "Jest, React Testing Library, Playwright",
+      "deployment": "Vercel / AWS / Docker"
+    },
+    "team_structure": {
+      "leadership": [
+        "requirements-engineering",
+        "solution-architecture",
+        "technical-lead"
+      ],
+      "development": [
+        "nextjs-frontend",
+        "backend-api",
+        "database-expert",
+        "security-expert",
+        "testing-qa",
+        "ui-ux-expert",
+        "performance-expert",
+        "devops-infrastructure",
+        "git-workflow-enforcement"
+      ]
+    },
+    "agents": [
+      {
+        "id": "requirements-engineering",
+        "name": "Requirements Engineering Expert",
+        "role": "Gathers, analyzes, structures, and documents requirements. Breaks down features into actionable tasks for the development team",
+        "rule_file": "requirements-engineering-expert.mdc",
+        "always_apply": true,
+        "level": "leadership"
+      },
+      {
+        "id": "solution-architecture",
+        "name": "Solution Architecture Expert",
+        "role": "Designs high-level system architecture, technical solutions, and delegates implementation to development team",
+        "rule_file": "solution-architecture-expert.mdc",
+        "always_apply": true,
+        "level": "leadership"
+      },
+      {
+        "id": "technical-lead",
+        "name": "Technical Lead / Engineering Manager",
+        "role": "Coordinates development efforts, makes technical decisions, reviews architecture, and ensures code quality standards",
+        "rule_file": "technical-lead-expert.mdc",
+        "always_apply": true,
+        "level": "leadership"
+      },
+      {
+        "id": "nextjs-frontend",
+        "name": "Next.js Frontend Expert",
+        "role": "Specializes in Next.js App Router, React Server Components, and client-side interactions",
+        "rule_file": "nextjs-frontend-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "backend-api",
+        "name": "Backend/API Expert",
+        "role": "Handles API routes, Server Actions, middleware, and backend logic",
+        "rule_file": "backend-api-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "database-expert",
+        "name": "Database & Schema Expert",
+        "role": "Manages database schemas, migrations, queries, and data modeling",
+        "rule_file": "database-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "security-expert",
+        "name": "Security Expert",
+        "role": "Ensures authentication, authorization, data protection, and security best practices",
+        "rule_file": "security-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "testing-qa",
+        "name": "Testing & QA Expert",
+        "role": "Implements comprehensive testing strategies, test coverage, and quality assurance",
+        "rule_file": "testing-qa-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "devops-infrastructure",
+        "name": "DevOps & Infrastructure Expert",
+        "role": "Manages deployment, CI/CD, environment configuration, and infrastructure",
+        "rule_file": "devops-infrastructure-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "ui-ux-expert",
+        "name": "UI/UX Design System Expert",
+        "role": "Ensures consistent design system, accessibility, and user experience",
+        "rule_file": "ui-ux-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "performance-expert",
+        "name": "Performance Optimization Expert",
+        "role": "Optimizes bundle size, loading times, Core Web Vitals, and runtime performance",
+        "rule_file": "performance-expert.mdc",
+        "always_apply": true,
+        "level": "development"
+      },
+      {
+        "id": "git-workflow-enforcement",
+        "name": "Git Workflow Enforcement Agent",
+        "role": "Ensures all code changes follow Git workflow, commit message conventions, and change management processes",
+        "rule_file": "git-workflow-enforcement.mdc",
+        "always_apply": true,
+        "level": "development"
+      }
+    ],
+    "collaboration": {
+      "communication_protocol": "Agents should collaborate when features span multiple domains",
+      "delegation_flow": "Leadership agents (Requirements, Architecture, Technical Lead) structure tasks and delegate to development team",
+      "conflict_resolution": "Technical Lead resolves conflicts. Security and Performance experts have priority in their domains",
+      "code_review": "All agents review code changes in their domain before merging. Technical Lead provides final approval",
+      "task_breakdown": "Requirements Engineering breaks down features. Solution Architecture designs solutions. Technical Lead coordinates implementation"
+    },
+    "standards": {
+      "code_style": "TypeScript strict mode, ESLint, Prettier",
+      "git_workflow": "Conventional commits, feature branches, PR reviews",
+      "documentation": "JSDoc for functions, README for features, inline comments for complex logic"
+    }
+  }
+}
+
