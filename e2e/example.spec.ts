@@ -4,6 +4,5 @@ test('homepage loads', async ({ page }) => {
   await page.goto('/')
 
   // Expect a title "to contain" a substring.
-  await expect(page).toHaveTitle(/Sample SaaS App/)
+  await expect(page).toHaveTitle(/DevSaaS - Developer Tools Platform/)
 })
-

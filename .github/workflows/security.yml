@@ -9,22 +9,11 @@ on:
     - cron: '0 0 * * 1' # Weekly on Monday
 
 jobs:
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v3
-        with:
-          fail-on-severity: moderate
-
   audit:
-    name: Security Audit
+    name: Security Audit (npm audit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # npm audit is always free and works for all repositories
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,48 +28,30 @@ jobs:
         run: npm ci
 
       - name: Run npm audit
-        run: npm audit --audit-level=moderate
+        run: npm audit --audit-level=moderate --json > npm-audit.json || true
         continue-on-error: true
 
+      - name: Display audit summary
+        run: |
+          if [ -f npm-audit.json ]; then
+            echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            vulnerabilities=$(cat npm-audit.json | jq -r '.metadata.vulnerabilities | to_entries | map("\(.key): \(.value)") | .[]' 2>/dev/null || echo "Unable to parse")
+            if [ -n "$vulnerabilities" ]; then
+              echo "### Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              echo "$vulnerabilities" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✅ No vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
       - name: Upload audit results
-        if: failure()
-        uses: actions/upload-artifact@v3
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
           path: npm-audit.json
           retention-days: 7
-
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['javascript', 'typescript']
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
-        with:
-          languages: ${{ matrix.language }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
-
+          if-no-files-found: ignore

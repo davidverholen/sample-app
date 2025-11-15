@@ -7,11 +7,13 @@ This directory contains the configuration for a comprehensive team of AI agents 
 The team consists of **11 specialized AI agents** organized into two levels:
 
 ### Leadership Level (Strategic & Planning)
+
 1. **Requirements Engineering Expert** - Gathers, analyzes, and structures requirements. Breaks down features into actionable tasks
 2. **Solution Architecture Expert** - Designs high-level system architecture and technical solutions
 3. **Technical Lead / Engineering Manager** - Coordinates development efforts, makes technical decisions, ensures code quality
 
 ### Development Level (Implementation)
+
 4. **Next.js Frontend Expert** - App Router, Server/Client Components
 5. **Backend/API Expert** - API routes, Server Actions, middleware
 6. **Database & Schema Expert** - Prisma, migrations, data modeling
@@ -31,11 +33,13 @@ The team consists of **11 specialized AI agents** organized into two levels:
 Each agent has a corresponding rule file in the `rules/` directory:
 
 ### Leadership Agents
+
 - `requirements-engineering-expert.mdc` - Requirements gathering, task breakdown, delegation
 - `solution-architecture-expert.mdc` - System architecture, technical solutions, design patterns
 - `technical-lead-expert.mdc` - Technical leadership, code review, team coordination
 
 ### Development Agents
+
 - `nextjs-frontend-expert.mdc` - Next.js and React best practices
 - `backend-api-expert.mdc` - API routes and Server Actions
 - `database-expert.mdc` - Database design and Prisma
@@ -52,6 +56,7 @@ These agent configurations are automatically applied when working in this projec
 ### Agent Collaboration & Workflow
 
 **Leadership → Development Flow**:
+
 1. **Requirements Engineering Expert** gathers requirements and breaks down features into tasks
 2. **Solution Architecture Expert** designs the technical solution and architecture
 3. **Technical Lead** coordinates implementation, assigns tasks to development experts
@@ -59,6 +64,7 @@ These agent configurations are automatically applied when working in this projec
 5. **Technical Lead** reviews and approves all work
 
 **Cross-Domain Collaboration**:
+
 - Security Expert reviews all authentication flows
 - Performance Expert reviews optimization opportunities
 - Testing Expert ensures comprehensive test coverage
@@ -76,6 +82,7 @@ These agent configurations are automatically applied when working in this projec
 ## Tech Stack
 
 This configuration is optimized for:
+
 - **Framework**: Next.js 14+ (App Router)
 - **Language**: TypeScript (strict mode)
 - **Styling**: Tailwind CSS
@@ -102,6 +109,7 @@ This configuration is optimized for:
 ## Customization
 
 To customize agent behavior:
+
 1. Edit the corresponding `.mdc` file in `rules/`
 2. Modify `team-config.json` to adjust agent settings
 3. Add or remove agents as needed for your project
@@ -113,4 +121,3 @@ To customize agent behavior:
 - Maintain consistency with established patterns
 - Update agent rules as project evolves
 - Document any project-specific deviations
-

@@ -1,19 +1,22 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string
   helpText?: string
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, error, helpText, id, 'aria-describedby': ariaDescribedBy, ...props }, ref) => {
+  (
+    { className, type, error, helpText, id, 'aria-describedby': ariaDescribedBy, ...props },
+    ref
+  ) => {
     const generatedId = React.useId()
     const inputId = id || generatedId
     const errorId = error ? `${inputId}-error` : undefined
     const helpTextId = helpText ? `${inputId}-help` : undefined
-    const describedBy = [ariaDescribedBy, errorId, helpTextId].filter(Boolean).join(' ') || undefined
+    const describedBy =
+      [ariaDescribedBy, errorId, helpTextId].filter(Boolean).join(' ') || undefined
 
     return (
       <div className="w-full">
@@ -26,9 +29,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             'placeholder:text-muted-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             'disabled:cursor-not-allowed disabled:opacity-50',
-            error
-              ? 'border-destructive focus-visible:ring-destructive'
-              : 'border-input',
+            error ? 'border-destructive focus-visible:ring-destructive' : 'border-input',
             className
           )}
           ref={ref}
@@ -53,4 +54,3 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 Input.displayName = 'Input'
 
 export { Input }
-

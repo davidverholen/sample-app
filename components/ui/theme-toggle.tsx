@@ -14,7 +14,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <Button variant="ghost" size="sm" className="w-9 h-9">
+      <Button variant="ghost" size="sm" className="h-9 w-9">
         <span className="sr-only">Toggle theme</span>
       </Button>
     )
@@ -25,14 +25,10 @@ export function ThemeToggle() {
       variant="ghost"
       size="sm"
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      className="w-9 h-9"
+      className="h-9 w-9"
       aria-label="Toggle theme"
     >
-      {theme === 'dark' ? (
-        <SunIcon className="h-4 w-4" />
-      ) : (
-        <MoonIcon className="h-4 w-4" />
-      )}
+      {theme === 'dark' ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
       <span className="sr-only">Toggle theme</span>
     </Button>
   )
@@ -83,4 +79,3 @@ function MoonIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
-

@@ -13,6 +13,7 @@ While Husky hooks provide local enforcement, GitHub branch protection rules prov
 Configure the following rules for the `main` branch:
 
 #### 1. Require Pull Request Reviews
+
 - ✅ **Require a pull request before merging**
 - ✅ **Required number of reviewers**: 1 (2 for security-related changes)
 - ✅ **Dismiss stale pull request approvals when new commits are pushed**
@@ -20,6 +21,7 @@ Configure the following rules for the `main` branch:
 - ✅ **Restrict who can dismiss pull request reviews**: Repository admins only
 
 #### 2. Require Status Checks to Pass
+
 - ✅ **Require status checks to pass before merging**
 - ✅ **Required status checks**:
   - `lint` (from CI workflow)
@@ -27,22 +29,27 @@ Configure the following rules for the `main` branch:
   - `test` (from CI workflow)
   - `build` (from CI workflow)
   - `e2e` (from CI workflow)
+  - `security` (from CI workflow)
   - `commit-message` (from CI workflow)
   - `pr-checks` (from CI workflow)
 - ✅ **Require branches to be up to date before merging**
 
 #### 3. Require Conversation Resolution
+
 - ✅ **Require conversation resolution before merging**
 
 #### 4. Require Linear History
+
 - ✅ **Require linear history** (prevents merge commits, enforces rebase/squash)
 
 #### 5. Restrict Pushes
+
 - ✅ **Restrict who can push to matching branches**: No one (only via PR)
 - ✅ **Allow force pushes**: ❌ Disabled
 - ✅ **Allow deletions**: ❌ Disabled
 
 #### 6. Branch Name Pattern (Optional but Recommended)
+
 - ✅ **Branch name pattern**: `^(feature|bugfix|hotfix|release)/.*`
 - This prevents creating branches that don't follow the naming convention
 
@@ -51,11 +58,13 @@ Configure the following rules for the `main` branch:
 Configure similar rules for `develop`, but slightly less strict:
 
 #### 1. Require Pull Request Reviews
+
 - ✅ **Require a pull request before merging**
 - ✅ **Required number of reviewers**: 1
 - ✅ **Dismiss stale pull request approvals when new commits are pushed**
 
 #### 2. Require Status Checks to Pass
+
 - ✅ **Require status checks to pass before merging**
 - ✅ **Required status checks**:
   - `lint`
@@ -65,6 +74,7 @@ Configure similar rules for `develop`, but slightly less strict:
 - ✅ **Require branches to be up to date before merging**
 
 #### 3. Restrict Pushes
+
 - ✅ **Restrict who can push to matching branches**: Team members only (or no one)
 - ✅ **Allow force pushes**: ❌ Disabled
 - ✅ **Allow deletions**: ❌ Disabled
@@ -93,10 +103,12 @@ Configure similar rules for `develop`, but slightly less strict:
 ### Step 4: Verify Protection
 
 1. Try to push directly to `main`:
+
    ```bash
    git checkout main
    git push origin main
    ```
+
    This should be blocked or require special permissions.
 
 2. Create a test branch and try to push:
@@ -125,14 +137,14 @@ Configure similar rules for `develop`, but slightly less strict:
 
 ## Enforcement Summary
 
-| Rule | Local (Husky) | GitHub Protection | Bypassable? |
-|------|---------------|-------------------|-------------|
-| Commit message format | ✅ Yes | ✅ Yes (CI) | ⚠️ `--no-verify` |
-| Code quality checks | ✅ Yes | ✅ Yes (CI) | ⚠️ `--no-verify` |
-| Branch naming | ✅ Yes (pre-push) | ⚠️ Optional | ⚠️ `--no-verify` |
+| Rule                           | Local (Husky)     | GitHub Protection   | Bypassable?         |
+| ------------------------------ | ----------------- | ------------------- | ------------------- |
+| Commit message format          | ✅ Yes            | ✅ Yes (CI)         | ⚠️ `--no-verify`    |
+| Code quality checks            | ✅ Yes            | ✅ Yes (CI)         | ⚠️ `--no-verify`    |
+| Branch naming                  | ✅ Yes (pre-push) | ⚠️ Optional         | ⚠️ `--no-verify`    |
 | Direct commits to main/develop | ✅ Yes (pre-push) | ✅ Yes (protection) | ❌ No (server-side) |
-| PR requirements | ❌ No | ✅ Yes | ❌ No |
-| Required reviews | ❌ No | ✅ Yes | ❌ No |
+| PR requirements                | ❌ No             | ✅ Yes              | ❌ No               |
+| Required reviews               | ❌ No             | ✅ Yes              | ❌ No               |
 
 ## Best Practices
 
@@ -152,7 +164,8 @@ Configure similar rules for `develop`, but slightly less strict:
 
 ### Issue: "Required status checks are failing"
 
-**Solution**: 
+**Solution**:
+
 1. Check the CI logs to see what failed
 2. Fix the issues locally
 3. Push again (CI will re-run)
@@ -160,6 +173,7 @@ Configure similar rules for `develop`, but slightly less strict:
 ### Issue: "Branch is out of date"
 
 **Solution**:
+
 ```bash
 git checkout your-branch
 git fetch origin
@@ -177,4 +191,3 @@ git push --force-with-lease
 - [GitHub Branch Protection Documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 - [Git Workflow Documentation](./GIT_WORKFLOW.md)
 - [Git Setup Guide](./GIT_SETUP.md)
-

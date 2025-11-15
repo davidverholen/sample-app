@@ -17,23 +17,26 @@ A modern, production-ready Next.js SaaS application built with TypeScript, Prism
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - PostgreSQL database
 - npm or yarn
 
 ### Installation
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
 
 2. Set up environment variables:
+
 ```bash
 cp .env.example .env.local
 ```
 
 3. Update `.env.local` with your database URL and NextAuth secret:
+
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/sample_app?schema=public"
 NEXTAUTH_SECRET="your-secret-key-here" # Generate with: openssl rand -base64 32
@@ -41,6 +44,7 @@ NEXTAUTH_URL="http://localhost:3000"
 ```
 
 4. Set up the database:
+
 ```bash
 # Generate Prisma Client
 npm run db:generate
@@ -53,6 +57,7 @@ npm run db:migrate
 ```
 
 5. Run the development server:
+
 ```bash
 npm run dev
 ```
@@ -106,6 +111,7 @@ Open [http://localhost:3000](http://localhost:3000) to see your app.
 This project follows a strict Git workflow with automated enforcement. See the [Git Workflow Documentation](./docs/GIT_WORKFLOW.md) for complete details.
 
 **Quick Reference**:
+
 - **Branching**: `main` (production), `develop` (staging), `feature/*`, `bugfix/*`, `hotfix/*`, `release/*`
 - **Branch Naming**: Enforced via pre-push hook (must follow `feature/123-description` pattern)
 - **Protected Branches**: Direct pushes to `main`/`develop` are blocked (use PRs)
@@ -114,6 +120,7 @@ This project follows a strict Git workflow with automated enforcement. See the [
 - **Releases**: Semantic versioning with automated release workflow
 
 **Enforcement**:
+
 - ✅ Pre-commit: Linting, formatting, type-checking, tests
 - ✅ Commit message: Conventional Commits format validation
 - ✅ Pre-push: Branch naming validation, protected branch checks, build, full test suite
@@ -121,6 +128,7 @@ This project follows a strict Git workflow with automated enforcement. See the [
 - ✅ GitHub Protection: Configure branch protection rules (see [GitHub Branch Protection Setup](./docs/GITHUB_BRANCH_PROTECTION.md))
 
 **Setup**:
+
 ```bash
 npm install  # Installs Husky git hooks
 git config commit.template .gitmessage  # Configure commit template
@@ -165,4 +173,3 @@ See [Git Setup Guide](./docs/GIT_SETUP.md) for detailed setup instructions.
 - [Prisma Documentation](https://www.prisma.io/docs)
 - [NextAuth.js Documentation](https://next-auth.js.org)
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-

@@ -54,7 +54,9 @@
 body {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* Screen reader only class */
@@ -126,4 +128,3 @@ body {
 .code-block::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--foreground));
 }
-

@@ -235,12 +235,15 @@ jest.mock('next-auth', () => ({
 
 ## Test Coverage
 
-### Coverage Requirements
-- Minimum 80% overall coverage
-- 100% coverage for critical business logic
-- 90% coverage for utilities and helpers
-- 70% coverage for UI components
+### Coverage Requirements - STRICT ENFORCEMENT
+- **MANDATORY**: Minimum 80% overall coverage (statements, branches, functions, lines)
+- **MANDATORY**: 100% coverage for critical business logic (auth, data validation, security)
+- **MANDATORY**: 90% coverage for utilities and helpers
+- **MANDATORY**: 80% coverage for UI components
+- **NO EXCEPTIONS**: Coverage thresholds MUST be met before merging PRs
+- **NO WORKAROUNDS**: Do not disable or lower coverage thresholds
 - Use `--coverage` flag with Jest
+- Coverage is enforced in CI/CD - builds will fail if thresholds are not met
 
 ### Coverage Configuration
 ```json
@@ -317,9 +320,34 @@ jobs:
 - Monitor response times
 - Test database query performance
 
+## Quality Assurance Enforcement
+
+### Strict QA Standards
+- **NEVER** lower or disable coverage thresholds
+- **NEVER** skip tests or mark them as pending without justification
+- **ALWAYS** write tests before or alongside code (TDD preferred)
+- **ALWAYS** ensure tests pass before committing
+- **ALWAYS** maintain minimum 80% coverage across all metrics
+- **REJECT** PRs that do not meet coverage requirements
+- **REQUIRE** test coverage for all new features and bug fixes
+
+### Coverage Enforcement in CI/CD
+- Coverage thresholds are enforced in GitHub Actions
+- PRs cannot be merged if coverage is below 80%
+- Coverage reports are generated and uploaded to Codecov
+- Coverage trends are monitored and must not decrease
+
+### Test Quality Standards
+- Tests must be meaningful and test actual behavior
+- Tests must be independent and not rely on execution order
+- Tests must be fast (< 100ms per test when possible)
+- Tests must be maintainable and readable
+- Tests must cover edge cases and error scenarios
+
 ## Collaboration
 
 - Work with Frontend Expert for component testing
 - Coordinate with Backend Expert for API testing
 - Ensure all features have test coverage
 - Review test quality and maintainability
+- **ENFORCE** strict quality standards - never compromise on test coverage

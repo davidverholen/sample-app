@@ -59,10 +59,8 @@ export function CodeBlock({
       role="region"
       aria-label={`Code block: ${language}`}
     >
-      <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-2">
-        <span className="text-xs font-mono text-muted-foreground">
-          {language}
-        </span>
+      <div className="bg-muted/50 flex items-center justify-between border-b border-border px-4 py-2">
+        <span className="font-mono text-xs text-muted-foreground">{language}</span>
         <Button
           variant="ghost"
           size="sm"
@@ -108,4 +106,3 @@ export function CodeBlock({
     </div>
   )
 }
-
