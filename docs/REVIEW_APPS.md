@@ -21,6 +21,40 @@ The review apps workflow (`.github/workflows/review-apps.yml`) runs on:
 - `pull_request.closed` - Cleanup preview resources
 - `workflow_dispatch` - Manual trigger
 
+## Initial Supabase Database Setup
+
+**IMPORTANT**: Before using review apps, you must set up the main Supabase database schema.
+
+If your Supabase dashboard shows "tables: 0", the schema hasn't been applied yet. To fix this:
+
+1. **Get your Supabase connection string**:
+   - Go to Supabase Dashboard → Project Settings → Database
+   - Copy the "Connection string" (URI format)
+   - It should look like: `postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres`
+
+2. **Set up the database schema**:
+
+   ```bash
+   # Set DATABASE_URL environment variable
+   export DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+
+   # Run the setup script
+   ./scripts/setup-supabase-schema.sh
+   ```
+
+   Or manually:
+
+   ```bash
+   export DATABASE_URL="your-connection-string"
+   npx prisma generate
+   npx prisma db push --accept-data-loss
+   npm run db:seed
+   ```
+
+3. **Verify setup**:
+   - Check Supabase dashboard - should now show tables (users, accounts, sessions, verification_tokens)
+   - Or run: `npx prisma studio` to view the database
+
 ## Required GitHub Secrets
 
 The following secrets must be configured in GitHub Settings → Secrets and variables → Actions:
