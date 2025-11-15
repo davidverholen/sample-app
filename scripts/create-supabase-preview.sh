@@ -60,15 +60,142 @@ API_URL="https://api.supabase.com/v1/projects"
 
 # Get main project details to extract database connection info
 echo "📋 Fetching main project details: $SUPABASE_PROJECT_REF"
-PROJECT_DETAILS=$(curl -s -X GET "$API_URL/$SUPABASE_PROJECT_REF" \
+PROJECT_DETAILS=$(curl -s -w "\n%{http_code}" -X GET "$API_URL/$SUPABASE_PROJECT_REF" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" 2>&1)
 
-# Check if API call was successful
-if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
+# Extract HTTP status code (last line)
+HTTP_CODE=$(echo "$PROJECT_DETAILS" | tail -n 1)
+PROJECT_DETAILS=$(echo "$PROJECT_DETAILS" | sed '$d')
+
+# Validate API response and project status
+if [ "$HTTP_CODE" != "200" ]; then
   echo "❌ Error: Failed to fetch project details"
-  echo "Response: $PROJECT_DETAILS"
+  echo "HTTP Status Code: $HTTP_CODE"
+  
+  # Parse error message if available
+  if command -v jq >/dev/null 2>&1; then
+    ERROR_MSG=$(echo "$PROJECT_DETAILS" | jq -r '.message // .error // "Unknown error"' 2>/dev/null || echo "")
+    if [ -n "$ERROR_MSG" ] && [ "$ERROR_MSG" != "null" ]; then
+      echo "Error message: $ERROR_MSG"
+    fi
+  fi
+  
+  # Provide specific guidance based on HTTP status
+  case "$HTTP_CODE" in
+    401)
+      echo ""
+      echo "💡 This indicates an authentication failure:"
+      echo "   - SUPABASE_ACCESS_TOKEN is incorrect or expired"
+      echo "   - Token may not have required permissions (projects:read)"
+      echo ""
+      echo "🔧 Troubleshooting:"
+      echo "   1. Verify SUPABASE_ACCESS_TOKEN in GitHub secrets"
+      echo "   2. Check token in Supabase Dashboard → Account Settings → Access Tokens"
+      echo "   3. Ensure token has 'projects:read' permission"
+      echo "   4. Generate a new token if needed"
+      ;;
+    404)
+      echo ""
+      echo "💡 This indicates the project was not found:"
+      echo "   - SUPABASE_PROJECT_REF is incorrect"
+      echo "   - Project may have been deleted or doesn't exist"
+      echo ""
+      echo "🔧 Troubleshooting:"
+      echo "   1. Verify SUPABASE_PROJECT_REF in GitHub secrets"
+      echo "   2. Check project reference ID in Supabase Dashboard → Project Settings → General"
+      echo "   3. Ensure the project reference matches exactly (case-sensitive)"
+      ;;
+    403)
+      echo ""
+      echo "💡 This indicates insufficient permissions:"
+      echo "   - Access token doesn't have required permissions"
+      echo "   - Project may belong to a different organization"
+      echo ""
+      echo "🔧 Troubleshooting:"
+      echo "   1. Verify access token has 'projects:read' permission"
+      echo "   2. Check if project is in a different organization"
+      echo "   3. Generate a new token with proper permissions"
+      ;;
+    *)
+      echo ""
+      echo "💡 This indicates an API error:"
+      echo "   - Supabase API may be experiencing issues"
+      echo "   - Network connectivity problem"
+      echo ""
+      echo "🔧 Troubleshooting:"
+      echo "   1. Check Supabase status page"
+      echo "   2. Verify network connectivity"
+      echo "   3. Retry the workflow"
+      ;;
+  esac
+  
+  echo ""
+  echo "Full API response (sanitized):"
+  echo "$PROJECT_DETAILS" | sed 's/\([Pp]assword\|[Tt]oken\|[Aa]uth\)[^"]*"[^"]*": "[^"]*"/\1***": "***"/g' | head -20
   exit 1
+fi
+
+# Validate that we got valid JSON response
+if ! echo "$PROJECT_DETAILS" | jq empty 2>/dev/null; then
+  echo "❌ Error: Invalid JSON response from Supabase API"
+  echo "Response: $PROJECT_DETAILS" | head -10
+  echo ""
+  echo "💡 This might indicate:"
+  echo "   - API endpoint changed"
+  echo "   - Network issue causing incomplete response"
+  echo "   - Supabase API issue"
+  exit 1
+fi
+
+# Extract and validate project information
+if command -v jq >/dev/null 2>&1; then
+  # Extract project details for validation
+  PROJECT_NAME=$(echo "$PROJECT_DETAILS" | jq -r '.name // "Unknown"' 2>/dev/null || echo "Unknown")
+  PROJECT_STATUS=$(echo "$PROJECT_DETAILS" | jq -r '.status // .state // "unknown"' 2>/dev/null || echo "unknown")
+  PROJECT_ID=$(echo "$PROJECT_DETAILS" | jq -r '.id // .project_id // "unknown"' 2>/dev/null || echo "unknown")
+  
+  # Log project information (without exposing secrets)
+  echo "✅ Project details retrieved:"
+  echo "   Name: $PROJECT_NAME"
+  echo "   Status: $PROJECT_STATUS"
+  echo "   ID: $PROJECT_ID"
+  
+  # Validate project status
+  if [ "$PROJECT_STATUS" = "INACTIVE" ] || [ "$PROJECT_STATUS" = "PAUSED" ] || [ "$PROJECT_STATUS" = "paused" ]; then
+    echo ""
+    echo "❌ Error: Supabase project is paused or inactive"
+    echo "   Project status: $PROJECT_STATUS"
+    echo ""
+    echo "💡 This project cannot accept connections while paused"
+    echo ""
+    echo "🔧 Troubleshooting:"
+    echo "   1. Go to Supabase Dashboard → Project Settings"
+    echo "   2. Resume or reactivate the project"
+    echo "   3. Wait for project to fully initialize (may take 1-2 minutes)"
+    echo "   4. Retry the workflow"
+    exit 1
+  fi
+  
+  # Check if project has database enabled
+  DB_ENABLED=$(echo "$PROJECT_DETAILS" | jq -r '.database // .db_enabled // "true"' 2>/dev/null || echo "true")
+  if [ "$DB_ENABLED" = "false" ] || [ "$DB_ENABLED" = "null" ]; then
+    echo "⚠️  Warning: Database may not be enabled for this project"
+  fi
+  
+  # Validate project ID matches project ref (if available)
+  if [ "$PROJECT_ID" != "unknown" ] && [ "$PROJECT_ID" != "$SUPABASE_PROJECT_REF" ]; then
+    echo "⚠️  Warning: Project ID from API ($PROJECT_ID) doesn't match SUPABASE_PROJECT_REF ($SUPABASE_PROJECT_REF)"
+    echo "   This might be normal if using project reference vs project ID"
+  fi
+else
+  # Fallback if jq is not available (shouldn't happen in GitHub Actions)
+  echo "⚠️  Warning: jq not available, skipping detailed project validation"
+  if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
+    echo "❌ Error: API response contains error"
+    echo "Response: $PROJECT_DETAILS" | head -10
+    exit 1
+  fi
 fi
 
 # Always construct DB_HOST from project ref (standard Supabase format)
@@ -118,13 +245,8 @@ else
   echo "⚠️  Warning: No URL encoding tool available, using password as-is"
 fi
 
-# Use the host from API if available, otherwise construct from project ref
-# Supabase hosts are typically: db.[PROJECT-REF].supabase.co
-if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
-  DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
-  echo "⚠️  Using constructed database host: $DB_HOST"
-fi
-
+# Construct main database connection string
+# Supabase Transaction Mode Pooling format (required for external IPs): postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true
 MAIN_DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
 
 # Create PostgreSQL schema using Prisma (which handles connection properly)
@@ -138,33 +260,100 @@ export SCHEMA_NAME="$SCHEMA_NAME"
 # Debug: Log connection string format (without password)
 echo "🔍 Connection string format: postgres://postgres:***@${DB_HOST}:6543/${DB_NAME}?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
 
+# Diagnostic: Validate connection components
+echo ""
+echo "📊 Connection Diagnostics:"
+echo "   ✓ Project validated via API"
+echo "   ✓ Host constructed: $DB_HOST"
+echo "   ✓ Database name: $DB_NAME"
+echo "   ✓ Schema name: $SCHEMA_NAME"
+echo "   ✓ Password encoding: $(if [ "$ENCODED_PASSWORD" != "$SUPABASE_DB_PASSWORD" ]; then echo "Applied"; else echo "Not needed"; fi)"
+echo "   ✓ Connection mode: Transaction Mode (port 6543)"
+echo "   ✓ Protocol: postgres:// (Transaction Mode)"
+echo "   ✓ SSL: Required (sslmode=require)"
+echo "   ✓ PgBouncer: Enabled (pgbouncer=true)"
+echo ""
+
 # Try to create schema with retries (database might be initializing)
 max_retries=3
 retry=0
 while [ $retry -lt $max_retries ]; do
+  echo "🔄 Attempt $((retry + 1))/$max_retries: Creating schema..."
   if node scripts/create-schema.js; then
     echo "✅ Schema created successfully"
     break
   else
     retry=$((retry + 1))
     if [ $retry -lt $max_retries ]; then
-      echo "⚠️  Schema creation attempt $retry failed, retrying in 5 seconds..."
+      echo ""
+      echo "⚠️  Schema creation attempt $retry failed"
+      echo "   This might be a transient network issue"
+      echo "   Retrying in 5 seconds..."
+      echo ""
       sleep 5
     else
+      echo ""
       echo "❌ Error: Failed to create schema after $max_retries attempts"
       echo ""
-      echo "This might indicate:"
-      echo "  - Database connection string is incorrect"
-      echo "  - Database password needs URL encoding (special characters)"
-      echo "  - Network connectivity issues from GitHub Actions"
-      echo "  - Supabase firewall blocking external connections"
-      echo "  - Database host is incorrect"
+      echo "📋 Connection Details (for troubleshooting):"
+      echo "   Host: $DB_HOST"
+      echo "   Port: 6543 (Transaction Mode)"
+      echo "   Database: $DB_NAME"
+      echo "   Schema: $SCHEMA_NAME"
+      echo "   Project: $SUPABASE_PROJECT_REF"
       echo ""
-      echo "Troubleshooting steps:"
-      echo "  1. Verify SUPABASE_DB_PASSWORD is correct (extract from Supabase dashboard)"
-      echo "  2. Check if password contains special characters that need encoding"
-      echo "  3. Verify database host: $DB_HOST"
-      echo "  4. Check Supabase project settings for connection restrictions"
+      echo "💡 This error typically indicates one of the following:"
+      echo ""
+      echo "1. **Incorrect Database Password** (most common):"
+      echo "   - SUPABASE_DB_PASSWORD may be incorrect"
+      echo "   - Password may contain special characters that need URL encoding"
+      echo "   - Password may have been changed in Supabase dashboard"
+      echo ""
+      echo "2. **Network/Firewall Issues**:"
+      echo "   - GitHub Actions runners may be blocked by Supabase firewall"
+      echo "   - Transaction Mode (port 6543) should work from any IP"
+      echo "   - Check if project has IP allowlisting enabled"
+      echo ""
+      echo "3. **Project Configuration Issues**:"
+      echo "   - Project may be paused or inactive (should be caught earlier)"
+      echo "   - Database may not be fully initialized"
+      echo "   - Project may have connection restrictions enabled"
+      echo ""
+      echo "4. **Host Format Issues**:"
+      echo "   - Host format: $DB_HOST"
+      echo "   - Should be: db.[PROJECT-REF].supabase.co"
+      echo "   - Verify SUPABASE_PROJECT_REF is correct"
+      echo ""
+      echo "🔧 Troubleshooting Steps:"
+      echo ""
+      echo "Step 1: Verify SUPABASE_DB_PASSWORD"
+      echo "  1. Go to Supabase Dashboard → Project Settings → Database"
+      echo "  2. Copy the connection string"
+      echo "  3. Extract the password from: postgresql://postgres:[PASSWORD]@..."
+      echo "  4. Update SUPABASE_DB_PASSWORD in GitHub secrets"
+      echo "  5. Ensure password is URL-encoded if it contains special characters"
+      echo ""
+      echo "Step 2: Verify SUPABASE_PROJECT_REF"
+      echo "  1. Go to Supabase Dashboard → Project Settings → General"
+      echo "  2. Check the 'Reference ID' field"
+      echo "  3. Verify it matches SUPABASE_PROJECT_REF in GitHub secrets"
+      echo "  4. Update if different"
+      echo ""
+      echo "Step 3: Check Project Status"
+      echo "  1. Go to Supabase Dashboard → Project Settings"
+      echo "  2. Verify project is 'Active' (not paused)"
+      echo "  3. Check if database is enabled"
+      echo ""
+      echo "Step 4: Test Connection Locally (if possible)"
+      echo "  1. Use the connection string from Supabase dashboard"
+      echo "  2. Test with: psql \"postgres://postgres:[PASSWORD]@$DB_HOST:6543/$DB_NAME?sslmode=require\""
+      echo "  3. If local connection works, issue is likely with GitHub Actions network"
+      echo ""
+      echo "Step 5: Check Supabase Project Settings"
+      echo "  1. Go to Supabase Dashboard → Project Settings → Database"
+      echo "  2. Check 'Connection Pooling' settings"
+      echo "  3. Verify Transaction Mode is enabled (port 6543)"
+      echo "  4. Check if IP allowlisting is enabled (should be disabled for GitHub Actions)"
       exit 1
     fi
   fi
