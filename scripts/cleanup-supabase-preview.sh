@@ -74,7 +74,9 @@ if [ -z "$DB_HOST" ]; then
 fi
 
 # Construct main database connection string
-MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+# Use connection pooling (port 6543) for external IPs like GitHub Actions runners
+# Port 5432 (direct connection) is blocked by Supabase firewall for external IPs
+MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
 
 # Drop PostgreSQL schema using Prisma
 echo "🗑️  Dropping PostgreSQL schema: $SCHEMA_NAME"

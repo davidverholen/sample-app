@@ -87,7 +87,9 @@ fi
 echo "✅ Found database host: $DB_HOST"
 
 # Construct main database connection string
-# Supabase direct connection format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+# Supabase connection pooling format (required for external IPs): postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres
+# Note: Port 6543 (connection pooling) is required for external IPs like GitHub Actions runners
+# Port 5432 (direct connection) is blocked by Supabase firewall for external IPs
 # URL encode the password to handle special characters
 # Use Node.js for URL encoding if available, otherwise use Python, otherwise use the password as-is
 if command -v node >/dev/null 2>&1; then
@@ -109,7 +111,7 @@ if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
   echo "⚠️  Using constructed database host: $DB_HOST"
 fi
 
-MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${ENCODED_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${ENCODED_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
 
 # Create PostgreSQL schema using Prisma (which handles connection properly)
 echo "📦 Creating PostgreSQL schema: $SCHEMA_NAME"
@@ -120,7 +122,7 @@ export DATABASE_URL="$MAIN_DATABASE_URL"
 export SCHEMA_NAME="$SCHEMA_NAME"
 
 # Debug: Log connection string format (without password)
-echo "🔍 Connection string format: postgresql://postgres.${SUPABASE_PROJECT_REF}:***@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+echo "🔍 Connection string format: postgresql://postgres.${SUPABASE_PROJECT_REF}:***@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
 
 # Try to create schema with retries (database might be initializing)
 max_retries=3
@@ -155,7 +157,7 @@ while [ $retry -lt $max_retries ]; do
 done
 
 # Construct preview database connection string with search_path
-# Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require&search_path=preview_pr7
+# Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:6543/[DB_NAME]?sslmode=require&search_path=preview_pr7
 DATABASE_URL="${MAIN_DATABASE_URL}&search_path=${SCHEMA_NAME}"
 
 # Always set outputs (even if empty, to prevent workflow failures)
@@ -167,6 +169,6 @@ DATABASE_URL="${MAIN_DATABASE_URL}&search_path=${SCHEMA_NAME}"
 
 echo "✅ Preview schema created successfully"
 echo "Schema: $SCHEMA_NAME"
-echo "DATABASE_URL format: postgresql://postgres.***:***@${DB_HOST}:5432/${DB_NAME}?sslmode=require&search_path=${SCHEMA_NAME}"
+echo "DATABASE_URL format: postgresql://postgres.***:***@${DB_HOST}:6543/${DB_NAME}?sslmode=require&search_path=${SCHEMA_NAME}"
 exit 0
 
