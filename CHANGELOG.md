@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-11-15
+
 ### Added
 
 - Git workflow and change management process
@@ -48,5 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Testing setup (Jest, Playwright)
 - Docker configuration
 
-[Unreleased]: https://github.com/your-org/sample-app/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/your-org/sample-app/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/your-org/sample-app/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/your-org/sample-app/releases/tag/v0.1.0
