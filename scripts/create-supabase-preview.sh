@@ -87,8 +87,29 @@ fi
 echo "✅ Found database host: $DB_HOST"
 
 # Construct main database connection string
-# Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require
-MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+# Supabase direct connection format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+# URL encode the password to handle special characters
+# Use Node.js for URL encoding if available, otherwise use Python, otherwise use the password as-is
+if command -v node >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$SUPABASE_DB_PASSWORD" 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+elif command -v python3 >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SUPABASE_DB_PASSWORD', safe=''))" 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+elif command -v jq >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(printf '%s' "$SUPABASE_DB_PASSWORD" | jq -sRr @uri 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+else
+  # Fallback: use password as-is (might fail if it contains special characters)
+  ENCODED_PASSWORD="$SUPABASE_DB_PASSWORD"
+  echo "⚠️  Warning: No URL encoding tool available, using password as-is"
+fi
+
+# Use the host from API if available, otherwise construct from project ref
+# Supabase hosts are typically: db.[PROJECT-REF].supabase.co
+if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ]; then
+  DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
+  echo "⚠️  Using constructed database host: $DB_HOST"
+fi
+
+MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${ENCODED_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
 
 # Create PostgreSQL schema using Prisma (which handles connection properly)
 echo "📦 Creating PostgreSQL schema: $SCHEMA_NAME"
@@ -97,10 +118,41 @@ echo "📦 Creating PostgreSQL schema: $SCHEMA_NAME"
 # The script will use Prisma Client from the project's node_modules
 export DATABASE_URL="$MAIN_DATABASE_URL"
 export SCHEMA_NAME="$SCHEMA_NAME"
-if ! node scripts/create-schema.js; then
-  echo "❌ Error: Failed to create schema"
-  exit 1
-fi
+
+# Debug: Log connection string format (without password)
+echo "🔍 Connection string format: postgresql://postgres.${SUPABASE_PROJECT_REF}:***@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+
+# Try to create schema with retries (database might be initializing)
+max_retries=3
+retry=0
+while [ $retry -lt $max_retries ]; do
+  if node scripts/create-schema.js; then
+    echo "✅ Schema created successfully"
+    break
+  else
+    retry=$((retry + 1))
+    if [ $retry -lt $max_retries ]; then
+      echo "⚠️  Schema creation attempt $retry failed, retrying in 5 seconds..."
+      sleep 5
+    else
+      echo "❌ Error: Failed to create schema after $max_retries attempts"
+      echo ""
+      echo "This might indicate:"
+      echo "  - Database connection string is incorrect"
+      echo "  - Database password needs URL encoding (special characters)"
+      echo "  - Network connectivity issues from GitHub Actions"
+      echo "  - Supabase firewall blocking external connections"
+      echo "  - Database host is incorrect"
+      echo ""
+      echo "Troubleshooting steps:"
+      echo "  1. Verify SUPABASE_DB_PASSWORD is correct (extract from Supabase dashboard)"
+      echo "  2. Check if password contains special characters that need encoding"
+      echo "  3. Verify database host: $DB_HOST"
+      echo "  4. Check Supabase project settings for connection restrictions"
+      exit 1
+    fi
+  fi
+done
 
 # Construct preview database connection string with search_path
 # Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require&search_path=preview_pr7
