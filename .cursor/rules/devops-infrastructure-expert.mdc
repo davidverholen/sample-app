@@ -1000,6 +1000,439 @@ For Supabase database and project management:
 
 **Full Documentation**: See the [Supabase Database Management](#supabase-database-management) section for complete setup, migration workflows, local development, backup/recovery, monitoring, and troubleshooting guides.
 
+#### GitHub CLI
+
+For GitHub repository and workflow management:
+
+- GitHub CLI is installed and configured: `gh --version`
+- Authenticated via `gh auth login` or `GITHUB_TOKEN` environment variable
+- See `docs/GITHUB_MCP_SETUP.md` for setup instructions
+
+**Common Commands**:
+- `gh pr list` - List pull requests
+- `gh pr view <number>` - View PR details
+- `gh workflow list` - List workflows
+- `gh run list` - List workflow runs
+- `gh run view <id>` - View workflow run details
+- `gh run rerun <id>` - Rerun a failed workflow
+- `gh api` - Direct API access
+
+**Key Benefits**:
+- Repository administration
+- Workflow management
+- PR and issue management
+- Direct API access
+
+**Full Documentation**: [GitHub CLI Documentation](https://cli.github.com/manual/)
+
+### Using CLI Tools for Debugging and Operations
+
+When troubleshooting infrastructure issues or performing operations, **ALWAYS use CLI tools** for debugging and investigation:
+
+#### Vercel CLI Documentation
+
+**Installation and Authentication**:
+```bash
+# Install Vercel CLI globally
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Link project to Vercel
+vercel link
+```
+
+**Deployment Commands**:
+```bash
+# Deploy to preview environment
+vercel
+
+# Deploy to production
+vercel --prod
+
+# Deploy with specific environment
+vercel --prod --env DATABASE_URL=postgresql://...
+
+# View deployments
+vercel ls
+
+# View deployment logs
+vercel logs [deployment-url]
+
+# Inspect deployment
+vercel inspect [deployment-url]
+```
+
+**Environment Variable Management**:
+```bash
+# Add environment variable
+vercel env add DATABASE_URL production
+
+# List environment variables
+vercel env ls
+
+# Pull environment variables locally
+vercel env pull .env.local
+
+# Remove environment variable
+vercel env rm DATABASE_URL production
+
+# Encrypt environment variable (for sensitive data)
+vercel env add SECRET_KEY production --force
+```
+
+**Project Management**:
+```bash
+# View project information
+vercel project ls
+
+# View project settings
+vercel project
+
+# Add domain to project
+vercel domains add example.com
+
+# View domains
+vercel domains ls
+```
+
+**Debugging Commands**:
+```bash
+# Check deployment status
+vercel ls
+
+# View deployment logs
+vercel logs [deployment-url]
+
+# Inspect deployment details
+vercel inspect [deployment-url]
+
+# Check environment variables
+vercel env ls
+
+# View project information
+vercel project
+
+# Test deployment locally
+vercel dev
+```
+
+**Common Debugging Scenarios**:
+- **Deployment failures**: Use `vercel logs` to view build and runtime errors
+- **Environment variable issues**: Use `vercel env ls` to verify variables are set
+- **Build errors**: Check logs for specific error messages
+- **Preview deployment issues**: Use `vercel inspect` to see deployment details
+
+**Full Documentation**: [Vercel CLI Docs](https://vercel.com/docs/cli) | [Vercel Deployment Docs](https://vercel.com/docs/deployments)
+
+#### Supabase CLI Documentation
+
+**Installation and Authentication**:
+```bash
+# Install Supabase CLI globally
+npm i -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link project to Supabase
+supabase link --project-ref your-project-ref
+```
+
+**Local Development**:
+```bash
+# Start local Supabase instance
+supabase start
+
+# Stop local Supabase instance
+supabase stop
+
+# Reset local database
+supabase db reset
+
+# View local services status
+supabase status
+```
+
+**Database Schema Management**:
+```bash
+# Pull remote database schema
+supabase db pull
+
+# Push local migrations to remote
+supabase db push
+
+# Create a new migration
+supabase migration new migration_name
+
+# View database diff
+supabase db diff
+
+# View database diff with specific schema
+supabase db diff --schema public
+```
+
+**Type Generation**:
+```bash
+# Generate TypeScript types from database
+supabase gen types typescript --local > types/supabase.ts
+
+# Generate types from remote database
+supabase gen types typescript --project-id your-project-ref > types/supabase.ts
+
+# Generate types for specific schema
+supabase gen types typescript --local --schema public > types/supabase.ts
+```
+
+**Database Operations**:
+```bash
+# Execute SQL file
+supabase db execute --file migration.sql
+
+# Open database in browser (local)
+supabase db open
+
+# View database logs
+supabase db logs
+
+# Backup database
+supabase db dump -f backup.sql
+
+# Restore database from backup
+supabase db restore backup.sql
+```
+
+**Project Management**:
+```bash
+# List projects
+supabase projects list
+
+# Get project details
+supabase projects get <project-ref>
+
+# Link to existing project
+supabase link --project-ref your-project-ref
+
+# View linked project info
+supabase projects list
+```
+
+**Debugging Commands**:
+```bash
+# Check project status
+supabase status
+
+# View database logs
+supabase db logs
+
+# Check database connection
+supabase db ping
+
+# View project information
+supabase projects list
+
+# Check project details
+supabase projects get <project-ref>
+
+# View database schema
+supabase db diff
+
+# Test database connection
+supabase db execute --stdin <<< "SELECT 1;"
+```
+
+**Common Debugging Scenarios**:
+- **Database connection issues**: Use `supabase db ping` to test connectivity
+- **Migration failures**: Use `supabase db diff` to see schema differences
+- **Project status**: Use `supabase projects get` to check project health
+- **Local development issues**: Use `supabase status` to verify local services
+
+**Full Documentation**: [Supabase CLI Docs](https://supabase.com/docs/reference/cli) | [Supabase Database Docs](https://supabase.com/docs/guides/database)
+
+#### GitHub CLI Documentation
+
+**Installation and Authentication**:
+```bash
+# Install GitHub CLI
+# macOS: brew install gh
+# Linux: See https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+# Windows: See https://github.com/cli/cli/blob/trunk/docs/install_windows.md
+
+# Login to GitHub
+gh auth login
+
+# Check authentication status
+gh auth status
+
+# Set up token authentication (for CI/CD)
+export GITHUB_TOKEN=your-token
+```
+
+**Repository Management**:
+```bash
+# View repository information
+gh repo view
+
+# Clone a repository
+gh repo clone owner/repo
+
+# Create a new repository
+gh repo create my-repo --public
+
+# View repository settings
+gh repo view --web
+```
+
+**Pull Request Management**:
+```bash
+# List pull requests
+gh pr list
+
+# View PR details
+gh pr view <number>
+
+# Create a pull request
+gh pr create --title "Title" --body "Description"
+
+# Checkout PR locally
+gh pr checkout <number>
+
+# Merge PR
+gh pr merge <number>
+
+# Close PR
+gh pr close <number>
+```
+
+**Workflow Management**:
+```bash
+# List workflows
+gh workflow list
+
+# View workflow runs
+gh run list
+
+# View specific workflow run
+gh run view <run-id>
+
+# View workflow logs
+gh run view <run-id> --log
+
+# Rerun failed workflow
+gh run rerun <run-id>
+
+# Watch workflow run
+gh run watch <run-id>
+```
+
+**Issue Management**:
+```bash
+# List issues
+gh issue list
+
+# View issue details
+gh issue view <number>
+
+# Create an issue
+gh issue create --title "Title" --body "Description"
+
+# Close an issue
+gh issue close <number>
+```
+
+**Secrets Management**:
+```bash
+# List secrets
+gh secret list
+
+# Set a secret
+gh secret set SECRET_NAME --body "value"
+
+# Remove a secret
+gh secret remove SECRET_NAME
+```
+
+**API Access**:
+```bash
+# Direct API access
+gh api repos/:owner/:repo
+
+# Get specific endpoint
+gh api repos/:owner/:repo/branches/main/protection
+
+# POST request
+gh api repos/:owner/:repo/issues -f title="Title" -f body="Body"
+
+# Use jq for JSON parsing
+gh api repos/:owner/:repo --jq '.name'
+```
+
+**Debugging Commands**:
+```bash
+# View workflow runs
+gh run list
+
+# View specific workflow run
+gh run view <run-id>
+
+# View workflow logs
+gh run view <run-id> --log
+
+# Rerun failed workflow
+gh run rerun <run-id>
+
+# View PR details
+gh pr view <number>
+
+# Check branch protection
+gh api repos/:owner/:repo/branches/main/protection
+
+# View repository settings
+gh repo view
+
+# List secrets
+gh secret list
+```
+
+**Common Debugging Scenarios**:
+- **Workflow failures**: Use `gh run view` to see detailed logs
+- **PR issues**: Use `gh pr view` to check PR status and checks
+- **Branch protection**: Use `gh api` to verify protection rules
+- **Repository settings**: Use `gh repo view` to check configuration
+- **Secret issues**: Use `gh secret list` to verify secrets are set
+
+**Full Documentation**: [GitHub CLI Documentation](https://cli.github.com/manual/)
+
+#### Debugging Workflow
+
+When debugging infrastructure issues:
+
+1. **Identify the Issue**:
+   - Check workflow logs in GitHub Actions
+   - Review deployment logs in Vercel
+   - Check database status in Supabase
+
+2. **Use CLI Tools for Investigation**:
+   - Use `vercel logs` for deployment issues
+   - Use `supabase db ping` for database connectivity
+   - Use `gh run view` for workflow failures
+
+3. **Verify Configuration**:
+   - Check environment variables with `vercel env ls`
+   - Verify project status with `supabase projects get`
+   - Check secrets with `gh secret list`
+
+4. **Test Locally** (when possible):
+   - Test deployments with `vercel dev`
+   - Test database with `supabase db push`
+   - Test workflows by running steps locally
+
+5. **Document Findings**:
+   - Record error messages
+   - Note configuration issues
+   - Document solutions for future reference
+
 ## Review Apps / Preview Environments
 
 Review apps (also called preview deployments) automatically create isolated environments for each pull request, allowing teams to test changes in a production-like environment before merging.
