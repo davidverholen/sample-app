@@ -78,7 +78,7 @@ The following secrets must be configured in GitHub Settings → Secrets and vari
 ### Optional Secrets
 
 - `NEXTAUTH_SECRET` - NextAuth secret (if not provided, a random secret is generated per preview)
-- `SUPABASE_DB_PASSWORD` - Database password (if using shared database approach)
+- `SUPABASE_DB_PASSWORD` - Override password for Supabase preview databases (otherwise generated automatically)
 
 ## How It Works
 
@@ -203,6 +203,7 @@ The main CI workflow (`.github/workflows/ci.yml`) has been updated to:
 - Check if using Management API approach (requires Team plan)
 - Script will fall back to shared database approach
 - Check Supabase API rate limits
+- Ensure the `db_pass` requirement is satisfied (the workflow now auto-generates a strong password per preview, but you can also provide `SUPABASE_DB_PASSWORD` to reuse a known value)
 
 ### E2E Tests Fail on Preview
 

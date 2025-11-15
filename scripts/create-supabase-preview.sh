@@ -34,6 +34,23 @@ if [ -z "$SUPABASE_PROJECT_REF" ]; then
   exit 1
 fi
 
+# Generate (or reuse) a database password for the preview project
+generate_db_password() {
+  # shellcheck disable=SC2005
+  echo "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+}
+
+# Allow optional override via env or fifth arg (primarily for testing)
+ARG_DB_PASSWORD="$5"
+PREVIEW_DB_PASSWORD="${SUPABASE_DB_PASSWORD:-${ARG_DB_PASSWORD:-$(generate_db_password)}}"
+
+if [ -z "$PREVIEW_DB_PASSWORD" ]; then
+  echo "❌ Error: Failed to determine database password (generation/override issue)"
+  exit 1
+fi
+
+echo "🔐 Using generated database password for preview (value redacted)"
+
 # Sanitize branch name for use in instance name (remove special characters)
 SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
 INSTANCE_NAME="preview-${SANITIZED_BRANCH}-pr${PR_NUMBER}"
@@ -77,7 +94,8 @@ RESPONSE=$(curl -s -X POST "$API_URL" \
     \"organization_id\": \"$SUPABASE_ORG_ID\",
     \"region\": \"us-east-1\",
     \"plan\": \"free\",
-    \"kps_enabled\": false
+    \"kps_enabled\": false,
+    \"db_pass\": \"$PREVIEW_DB_PASSWORD\"
   }" 2>&1)
 
 # Check if project creation was successful
@@ -112,20 +130,24 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
   exit 1
 fi
 
-DB_PASSWORD=$(echo "$PROJECT_DETAILS" | grep -o '"db_pass":"[^"]*' | cut -d'"' -f4 || echo "")
+FETCHED_DB_PASSWORD=$(echo "$PROJECT_DETAILS" | grep -o '"db_pass":"[^"]*' | cut -d'"' -f4 || echo "")
 DB_HOST=$(echo "$PROJECT_DETAILS" | grep -o '"db_host":"[^"]*' | cut -d'"' -f4 || echo "")
 DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
 
-if [ -z "$DB_PASSWORD" ] || [ -z "$DB_HOST" ]; then
+if [ -z "$FETCHED_DB_PASSWORD" ]; then
+  FETCHED_DB_PASSWORD="$PREVIEW_DB_PASSWORD"
+fi
+
+if [ -z "$FETCHED_DB_PASSWORD" ] || [ -z "$DB_HOST" ]; then
   echo "❌ Error: Failed to extract database connection details"
-  echo "DB_PASSWORD: ${DB_PASSWORD:+set}" 
+  echo "DB_PASSWORD: ${FETCHED_DB_PASSWORD:+set}" 
   echo "DB_HOST: ${DB_HOST:+set}"
   echo "Response: $PROJECT_DETAILS"
   exit 1
 fi
 
 # Supabase requires SSL connections
-DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${FETCHED_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
 
 # Always set outputs (even if empty, to prevent workflow failures)
 {
