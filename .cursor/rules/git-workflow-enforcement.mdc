@@ -654,6 +654,16 @@ When performing administrative tasks, **ALWAYS**:
 
 See `docs/GIT_WORKFLOW.md#using-github-cli-gh-for-administrative-tasks` for detailed examples.
 
+## References
+
+- See `docs/GIT_WORKFLOW.md` for complete workflow documentation
+- See `docs/GIT_SETUP.md` for detailed setup instructions and troubleshooting
+- See `docs/GIT_WORKFLOW_SUMMARY.md` for quick reference guide
+- See `docs/GITHUB_BRANCH_PROTECTION.md` for branch protection setup
+- Conventional Commits: https://www.conventionalcommits.org/
+- Semantic Versioning: https://semver.org/
+- GitHub CLI Documentation: https://cli.github.com/manual/
+
 ## Git Setup and Troubleshooting
 
 ### Initial Setup

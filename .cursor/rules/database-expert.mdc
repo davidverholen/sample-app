@@ -259,9 +259,70 @@ model User {
 }
 ```
 
+## Supabase Integration
+
+Supabase provides a PostgreSQL database with additional features. When using Supabase, follow these patterns:
+
+### Using Prisma with Supabase
+
+**Connection String**:
+```bash
+# Supabase connection string format
+DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+```
+
+**Schema Management**:
+- Use Supabase CLI for schema migrations: `supabase db push`
+- Use Prisma for type-safe queries
+- Keep Prisma schema in sync with Supabase migrations
+- Generate types from Supabase: `supabase gen types typescript`
+
+**Best Practices**:
+- Use Supabase CLI for schema management
+- Use Prisma for application queries
+- Keep migrations in sync between Supabase and Prisma
+- Generate TypeScript types from Supabase schema regularly
+
+### Supabase-Specific Features
+
+**Row Level Security (RLS)**:
+- Enable RLS on tables for security
+- Create policies for access control
+- Test policies locally before deploying
+
+**Real-time Subscriptions**:
+- Enable real-time on tables when needed
+- Use Supabase client for real-time subscriptions
+- Consider performance implications
+
+**Database Functions**:
+- Create database functions in Supabase migrations
+- Use functions for complex queries or business logic
+- Document function parameters and return types
+
+### Supabase Migration Workflow
+
+```bash
+# 1. Create migration
+supabase migration new add_user_table
+
+# 2. Edit migration file in supabase/migrations/
+
+# 3. Apply locally
+supabase db reset
+
+# 4. Sync to Prisma (manually update schema.prisma)
+
+# 5. Push to remote
+supabase db push
+```
+
+**Documentation**: See DevOps Expert specification for complete Supabase CLI documentation and workflows.
+
 ## Collaboration
 
 - Work with Backend Expert for query implementation
 - Coordinate with Security Expert for data access patterns
 - Consult Performance Expert for optimization opportunities
 - Ensure schema supports business requirements
+- Coordinate with DevOps Expert for Supabase deployment and migrations
