@@ -93,54 +93,14 @@ MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_P
 # Create PostgreSQL schema using Prisma (which handles connection properly)
 echo "📦 Creating PostgreSQL schema: $SCHEMA_NAME"
 
-# Use node with Prisma to create the schema
-# We'll use a temporary script to execute the schema creation
-TEMP_SCRIPT=$(mktemp)
-cat > "$TEMP_SCRIPT" << 'EOF'
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient({
-  log: ['error'],
-});
-
-async function createSchema() {
-  const schemaName = process.env.SCHEMA_NAME;
-  if (!schemaName) {
-    console.error('❌ Error: SCHEMA_NAME environment variable is not set');
-    process.exit(1);
-  }
-
-  try {
-    // Create schema using raw SQL
-    // PostgreSQL identifiers need to be quoted if they contain special characters
-    // But our schema name is sanitized, so we can use it directly
-    await prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
-    console.log(`✅ Schema created successfully: ${schemaName}`);
-    await prisma.$disconnect();
-    process.exit(0);
-  } catch (error) {
-    console.error(`❌ Error creating schema: ${error.message}`);
-    if (error.code) {
-      console.error(`   Error code: ${error.code}`);
-    }
-    await prisma.$disconnect().catch(() => {});
-    process.exit(1);
-  }
-}
-
-createSchema();
-EOF
-
 # Run the schema creation script
+# The script will use Prisma Client from the project's node_modules
 export DATABASE_URL="$MAIN_DATABASE_URL"
 export SCHEMA_NAME="$SCHEMA_NAME"
-if ! node "$TEMP_SCRIPT"; then
+if ! node scripts/create-schema.js; then
   echo "❌ Error: Failed to create schema"
-  rm -f "$TEMP_SCRIPT"
   exit 1
 fi
-
-rm -f "$TEMP_SCRIPT"
 
 # Construct preview database connection string with search_path
 # Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require&search_path=preview_pr7
