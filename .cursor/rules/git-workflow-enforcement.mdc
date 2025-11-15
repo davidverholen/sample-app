@@ -186,14 +186,26 @@ update: fix login bug
 
 **FIRST**: Complete the [Pre-GitHub Operations Checklist](#pre-github-operations-checklist) above - this is MANDATORY.
 
+**CRITICAL**: Before creating ANY PR, you MUST validate the PR title format. PRs with invalid titles will fail CI checks and cannot be merged.
+
 MUST verify:
 
-1. **Git Status** (MANDATORY - must be done first):
+1. **PR Title Format** (MANDATORY - must be validated first):
+   - [ ] PR title follows format: `<type>(<scope>): <subject>`
+   - [ ] Type is valid (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert)
+   - [ ] Scope is appropriate for the change (or omitted if `requireScope: false`)
+   - [ ] Subject starts with lowercase letter
+   - [ ] Subject is maximum 72 characters
+   - [ ] Subject uses imperative mood ("add" not "added" or "adds")
+   - [ ] Subject does NOT end with a period
+   - [ ] PR title will pass CI validation (see [PR Title Format](#pr-title-format) section)
+
+2. **Git Status** (MANDATORY - must be done second):
    - [ ] Run `git status` to check for uncommitted changes
    - [ ] If uncommitted changes exist, commit them first
    - [ ] Verify working tree is clean: `git status` shows "nothing to commit, working tree clean"
 
-2. **Code Quality**:
+3. **Code Quality**:
    - [ ] All tests pass (`npm test`)
    - [ ] Type checking passes (`npm run type-check`)
    - [ ] Linting passes (`npm run lint`)
@@ -202,37 +214,74 @@ MUST verify:
    - [ ] No commented-out code
    - [ ] No TODO comments without issue references
 
-3. **Documentation**:
+4. **Documentation**:
    - [ ] Code is self-documenting
    - [ ] Complex logic has comments
    - [ ] README updated if needed
    - [ ] CHANGELOG updated for user-facing changes
    - [ ] API documentation updated if applicable
 
-4. **Testing**:
+5. **Testing**:
    - [ ] Unit tests added/updated
    - [ ] Integration tests added if needed
    - [ ] E2E tests added for critical flows
    - [ ] Test coverage maintained (80%+)
 
-5. **Git**:
+6. **Git**:
    - [ ] Commit messages follow convention
+   - [ ] **PR title follows convention** (MANDATORY - will be validated by CI)
    - [ ] Branch is up to date with target
    - [ ] No merge conflicts
    - [ ] Branch name follows convention
 
 ### PR Title Format
 
-MUST follow commit message format:
+**CRITICAL**: PR titles MUST follow the Conventional Commits format and will be validated by CI/CD. PRs with invalid titles will fail CI checks.
 
+**Required Format**:
 ```
 <type>(<scope>): <subject>
 ```
 
-Examples:
-- `feat(auth): add password reset functionality`
-- `fix(api): resolve user validation error`
-- `refactor(ui): extract Button component`
+**Valid Types**:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, missing semicolons, etc.)
+- `refactor`: Code refactoring
+- `perf`: Performance improvements
+- `test`: Adding or updating tests
+- `build`: Build system or dependency changes
+- `ci`: CI/CD configuration changes
+- `chore`: Other changes that don't modify src or test files
+- `revert`: Revert a previous commit
+
+**Valid Scopes** (commonly used):
+- `auth`, `api`, `ui`, `db`, `config`, `deps`, `workflows`, `ci`
+- `agents`, `devops`, `docs`, `security`, `testing`, `performance`
+- Or any other descriptive scope relevant to the change
+
+**Subject Rules**:
+- MUST start with lowercase letter
+- MUST be maximum 72 characters
+- MUST use imperative mood ("add" not "added" or "adds")
+- MUST NOT end with a period
+- MUST reference issue number if applicable: `#123`
+
+**Examples**:
+- ✅ `feat(auth): add password reset functionality`
+- ✅ `fix(api): resolve user validation error`
+- ✅ `refactor(ui): extract Button component`
+- ✅ `docs(agents): enhance agent specifications with documentation`
+- ❌ `Add password reset` (missing type and scope)
+- ❌ `feat: Add password reset` (missing scope)
+- ❌ `FEAT(auth): Add password reset` (type must be lowercase, subject must start lowercase)
+
+**Enforcement**:
+- CI/CD will automatically validate PR titles
+- PRs with invalid titles will fail the "PR Checks" job
+- You MUST fix the PR title before the PR can be merged
+- Use the GitHub UI to edit the PR title if validation fails
 
 ### PR Description Requirements
 
@@ -382,12 +431,19 @@ Before ANY commit, MUST ensure:
    - PROVIDE correct naming example
    - EXPLAIN the convention
 
-4. **PR Requirements Not Met**:
+4. **PR Title Violations**:
+   - REJECT the PR creation immediately
+   - PROVIDE correct format example
+   - EXPLAIN the violation
+   - REMIND that CI will fail if title is invalid
+   - REQUIRE fixing title before proceeding
+
+5. **PR Requirements Not Met**:
    - REJECT the PR creation
    - LIST missing requirements
    - PROVIDE checklist
 
-5. **Code Quality Issues**:
+6. **Code Quality Issues**:
    - REJECT the commit/PR
    - LIST specific issues
    - PROVIDE fix suggestions

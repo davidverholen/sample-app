@@ -323,6 +323,12 @@ jobs:
             deps
             workflows
             ci
+            agents
+            devops
+            docs
+            security
+            testing
+            performance
           requireScope: false
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
@@ -364,7 +370,17 @@ jobs:
             deps
             workflows
             ci
+            agents
+            devops
+            docs
+            security
+            testing
+            performance
           requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The PR title subject "{subject}" doesn't match the required pattern.
+            Please ensure the subject line starts with a lowercase letter.
 
       - name: Validate branch naming
         run: |
