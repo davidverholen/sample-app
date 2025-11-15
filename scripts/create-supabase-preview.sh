@@ -9,10 +9,20 @@ PR_NUMBER="$2"
 SUPABASE_ACCESS_TOKEN="$3"
 SUPABASE_PROJECT_REF="$4"
 
-if [ -z "$BRANCH_NAME" ] || [ -z "$PR_NUMBER" ] || [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+# Ensure GITHUB_OUTPUT is set (for GitHub Actions)
+if [ -z "$GITHUB_OUTPUT" ]; then
+  GITHUB_OUTPUT="/dev/stdout"
+fi
+
+if [ -z "$BRANCH_NAME" ] || [ -z "$PR_NUMBER" ]; then
   echo "❌ Error: Missing required arguments"
   echo "Usage: $0 <branch-name> <pr-number> <access-token> <project-ref>"
   exit 1
+fi
+
+# SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF are optional (for fallback)
+if [ -z "$SUPABASE_PROJECT_REF" ]; then
+  echo "⚠️  Warning: SUPABASE_PROJECT_REF not provided, will use fallback approach"
 fi
 
 # Sanitize branch name for use in instance name (remove special characters)
@@ -77,10 +87,13 @@ if echo "$RESPONSE" | grep -q '"id"'; then
   
   if [ -n "$DB_PASSWORD" ] && [ -n "$DB_HOST" ]; then
     DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
-    echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_OUTPUT
-    echo "instance-name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
-    echo "project-id=$PROJECT_ID" >> $GITHUB_OUTPUT
+    {
+      echo "DATABASE_URL=$DATABASE_URL"
+      echo "instance-name=$INSTANCE_NAME"
+      echo "project-id=$PROJECT_ID"
+    } >> "$GITHUB_OUTPUT"
     echo "✅ Preview instance created successfully"
+    echo "DATABASE_URL=$DATABASE_URL" >&2
     exit 0
   fi
 fi
@@ -120,11 +133,14 @@ if [ -n "$SUPABASE_PROJECT_REF" ]; then
   # Note: Schema will be created during migration step
   DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
   
-  echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_OUTPUT
-  echo "instance-name=$INSTANCE_NAME" >> $GITHUB_OUTPUT
-  echo "schema-name=$SCHEMA_NAME" >> $GITHUB_OUTPUT
+  {
+    echo "DATABASE_URL=$DATABASE_URL"
+    echo "instance-name=$INSTANCE_NAME"
+    echo "schema-name=$SCHEMA_NAME"
+  } >> "$GITHUB_OUTPUT"
   echo "✅ Using shared database with branch schema: $SCHEMA_NAME"
   echo "⚠️  Note: Schema '$SCHEMA_NAME' will be created during migration step"
+  echo "DATABASE_URL=$DATABASE_URL" >&2
   exit 0
 fi
 
