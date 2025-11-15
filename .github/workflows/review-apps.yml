@@ -54,19 +54,22 @@ jobs:
             exit 1
           fi
           if [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
-            echo "⚠️  SUPABASE_ACCESS_TOKEN not set, will use fallback approach"
+            echo "❌ SUPABASE_ACCESS_TOKEN secret is required"
+            echo "Please set SUPABASE_ACCESS_TOKEN in GitHub secrets"
+            exit 1
           fi
           if [ -z "${{ secrets.SUPABASE_PROJECT_REF }}" ]; then
-            echo "⚠️  SUPABASE_PROJECT_REF not set, will use fallback approach"
+            echo "❌ SUPABASE_PROJECT_REF secret is required"
+            echo "Please set SUPABASE_PROJECT_REF in GitHub secrets"
+            exit 1
           fi
-          echo "✅ Required secrets validated"
+          echo "✅ All required secrets are set"
 
       - name: Create Supabase preview instance
         id: create-supabase-preview
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           chmod +x scripts/create-supabase-preview.sh
           # Run script - it writes outputs to GITHUB_OUTPUT
@@ -76,135 +79,103 @@ jobs:
             "${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
             "${{ secrets.SUPABASE_PROJECT_REF }}"
 
-          # Verify outputs were written
-          if [ -f "$GITHUB_OUTPUT" ]; then
-            echo "✅ Outputs written to GITHUB_OUTPUT"
-            # Show what was written (without sensitive data)
-            grep -v "DATABASE_URL" "$GITHUB_OUTPUT" || true
-          else
-            echo "❌ GITHUB_OUTPUT file not found"
+      - name: Validate script outputs
+        run: |
+          # Validate that required outputs were set
+          if [ -z "${{ steps.create-supabase-preview.outputs.database-url }}" ]; then
+            echo "❌ Error: database-url output is missing"
             exit 1
           fi
-        continue-on-error: false
+          if [ -z "${{ steps.create-supabase-preview.outputs.instance-name }}" ]; then
+            echo "❌ Error: instance-name output is missing"
+            exit 1
+          fi
+          if [ -z "${{ steps.create-supabase-preview.outputs.project-id }}" ]; then
+            echo "❌ Error: project-id output is missing"
+            exit 1
+          fi
+          echo "✅ All required outputs are set"
+          echo "Instance: ${{ steps.create-supabase-preview.outputs.instance-name }}"
+          echo "Project ID: ${{ steps.create-supabase-preview.outputs.project-id }}"
 
       - name: Wait for Supabase preview to be ready
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROJECT_ID: ${{ steps.create-supabase-preview.outputs.project-id }}
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
-        continue-on-error: true
         run: |
           echo "Waiting for Supabase preview to be ready..."
 
-          # If we have a PROJECT_ID, check project status via Management API
-          # This is faster and more reliable than trying to connect to the database
-          if [ -n "$PROJECT_ID" ] && [ -n "$SUPABASE_ACCESS_TOKEN" ]; then
-            echo "Checking Supabase project status via Management API..."
-            API_URL="https://api.supabase.com/v1/projects"
-            max_attempts=40
-            attempt=0
-            
-            while [ $attempt -lt $max_attempts ]; do
-              # Check project status via API
-              PROJECT_STATUS=$(curl -s -X GET "$API_URL/$PROJECT_ID" \
-                -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" 2>/dev/null || echo "{}")
-              
-              # Check if project is active/ready
-              # Supabase projects have a "status" field that can be "ACTIVE_HEALTHY", "INACTIVE", etc.
-              if echo "$PROJECT_STATUS" | grep -qE '"status":"[^"]*ACTIVE[^"]*"|"healthy":true'; then
-                echo "✅ Supabase project is active and ready"
-                
-                # Now verify database connection
-                if [ -n "$DATABASE_URL" ]; then
-                  echo "Verifying database connection..."
-                  if node scripts/test-db-connection.js 2>&1; then
-                    echo "✅ Database connection verified"
-                    exit 0
-                  else
-                    echo "⚠️  Project is active but database connection failed, will retry..."
-                  fi
-                else
-                  # If no DATABASE_URL, project is ready but we'll get connection details later
-                  echo "✅ Project is ready (connection details will be retrieved)"
-                  exit 0
-                fi
-              fi
-              
-              attempt=$((attempt + 1))
-              
-              # Show progress every 5 attempts
-              if [ $((attempt % 5)) -eq 0 ]; then
-                echo "Attempt $attempt/$max_attempts: Still waiting for project to be active..."
-                echo "  (New Supabase projects can take 1-5 minutes to initialize)"
-                # Show current status for debugging
-                STATUS=$(echo "$PROJECT_STATUS" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "unknown")
-                echo "  Current project status: $STATUS"
-              else
-                echo "Attempt $attempt/$max_attempts: Project not ready yet, waiting..."
-              fi
-              
-              sleep 15
-            done
-            
-            echo "⚠️  Project status check timed out after $max_attempts attempts (~10 minutes)"
-          else
-            # Fallback: If no PROJECT_ID (using shared database), just check database connection
-            echo "No PROJECT_ID found, checking database connection directly..."
-            echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
-            
-            max_attempts=40
-            attempt=0
-            
-            while [ $attempt -lt $max_attempts ]; do
-              if node scripts/test-db-connection.js 2>&1; then
-                echo "✅ Database is ready (connection verified)"
-                exit 0
-              fi
-              
-              attempt=$((attempt + 1))
-              if [ $((attempt % 5)) -eq 0 ]; then
-                echo "Attempt $attempt/$max_attempts: Still waiting..."
-              else
-                echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
-              fi
-              sleep 15
-            done
+          if [ -z "$PROJECT_ID" ]; then
+            echo "❌ Error: PROJECT_ID is required but not set"
+            exit 1
           fi
 
-          echo ""
-          echo "⚠️  Readiness check timed out after $max_attempts attempts (~10 minutes)"
-          echo ""
+          if [ -z "$DATABASE_URL" ]; then
+            echo "❌ Error: DATABASE_URL is required but not set"
+            exit 1
+          fi
+
+          echo "Checking Supabase project status via Management API..."
+          API_URL="https://api.supabase.com/v1/projects"
+          max_attempts=40
+          attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            # Check project status via API
+            PROJECT_STATUS=$(curl -s -X GET "$API_URL/$PROJECT_ID" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              -H "Content-Type: application/json" 2>&1)
+            
+            # Check for API errors
+            if echo "$PROJECT_STATUS" | grep -q '"error"'; then
+              echo "❌ Error: Failed to check project status"
+              echo "Response: $PROJECT_STATUS"
+              exit 1
+            fi
+            
+            # Check if project is active/ready
+            if echo "$PROJECT_STATUS" | grep -qE '"status":"[^"]*ACTIVE[^"]*"|"healthy":true'; then
+              echo "✅ Supabase project is active and ready"
+              
+              # Verify database connection
+              echo "Verifying database connection..."
+              if node scripts/test-db-connection.js 2>&1; then
+                echo "✅ Database connection verified"
+                exit 0
+              else
+                echo "⚠️  Project is active but database connection failed, will retry..."
+              fi
+            fi
+            
+            attempt=$((attempt + 1))
+            
+            # Show progress every 5 attempts
+            if [ $((attempt % 5)) -eq 0 ]; then
+              echo "Attempt $attempt/$max_attempts: Still waiting for project to be active..."
+              echo "  (New Supabase projects can take 1-5 minutes to initialize)"
+              STATUS=$(echo "$PROJECT_STATUS" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "unknown")
+              echo "  Current project status: $STATUS"
+            else
+              echo "Attempt $attempt/$max_attempts: Project not ready yet, waiting..."
+            fi
+            
+            sleep 15
+          done
+
+          echo "❌ Error: Readiness check timed out after $max_attempts attempts (~10 minutes)"
           echo "This might indicate:"
           echo "  - Supabase project is still initializing (can take 1-5 minutes for new projects)"
           echo "  - Database connection string might be incorrect"
           echo "  - Network connectivity issues"
-          echo ""
-          echo "Continuing to migration step - it will provide more detailed error information if connection fails..."
-
-      - name: Create branch schema (fallback mode)
-        if: steps.create-supabase-preview.outputs.schema-name != ''
-        env:
-          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
-          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
-        run: |
-          npx prisma db execute --stdin <<EOF
-          CREATE SCHEMA IF NOT EXISTS "$SCHEMA_NAME";
-          SET search_path TO "$SCHEMA_NAME", public;
-          EOF
+          exit 1
 
       - name: Apply database migrations
         env:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
-          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
         run: |
           echo "Applying database migrations..."
           echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
-
-          # If using branch schema, append it to DATABASE_URL
-          if [ -n "$SCHEMA_NAME" ]; then
-            export DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
-            echo "Using schema: $SCHEMA_NAME"
-          fi
 
           # Try to push schema with retries
           max_retries=3
@@ -240,12 +211,7 @@ jobs:
       - name: Seed preview database
         env:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
-          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
         run: |
-          # If using branch schema, append it to DATABASE_URL
-          if [ -n "$SCHEMA_NAME" ]; then
-            export DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
-          fi
           npm run db:seed || echo "⚠️ Seeding failed, continuing..."
 
       - name: Generate NextAuth secret
@@ -475,7 +441,6 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           chmod +x scripts/cleanup-supabase-preview.sh
           ./scripts/cleanup-supabase-preview.sh \
