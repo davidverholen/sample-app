@@ -47,10 +47,9 @@ async function createSchema() {
   console.log(`📦 Creating schema: ${schemaName}`)
 
   try {
-    // Test connection first
-    await prisma.$connect()
-    console.log('✅ Database connection established')
-
+    // Skip explicit $connect() - Prisma will connect lazily on first query
+    // This avoids issues with Transaction Mode (port 6543) where $connect() may fail
+    // but the actual query execution works fine
     // Create schema using raw SQL
     // PostgreSQL identifiers need to be quoted if they contain special characters
     // But our schema name is sanitized, so we can use it directly
