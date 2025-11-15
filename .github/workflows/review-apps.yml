@@ -89,40 +89,90 @@ jobs:
 
       - name: Wait for Supabase preview to be ready
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_ID: ${{ steps.create-supabase-preview.outputs.project-id }}
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
         continue-on-error: true
         run: |
-          echo "Waiting for Supabase preview database to be ready..."
-          echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
+          echo "Waiting for Supabase preview to be ready..."
 
-          # For new Supabase projects, they can take 30-90 seconds to initialize
-          # Increase max attempts and wait time for new projects
-          max_attempts=40
-          attempt=0
-
-          while [ $attempt -lt $max_attempts ]; do
-            # Use Node.js script to test database connection (most reliable)
-            if node scripts/test-db-connection.js 2>&1; then
-              echo "✅ Database is ready (connection verified)"
-              exit 0
-            fi
+          # If we have a PROJECT_ID, check project status via Management API
+          # This is faster and more reliable than trying to connect to the database
+          if [ -n "$PROJECT_ID" ] && [ -n "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "Checking Supabase project status via Management API..."
+            API_URL="https://api.supabase.com/v1/projects"
+            max_attempts=40
+            attempt=0
             
-            attempt=$((attempt + 1))
+            while [ $attempt -lt $max_attempts ]; do
+              # Check project status via API
+              PROJECT_STATUS=$(curl -s -X GET "$API_URL/$PROJECT_ID" \
+                -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" 2>/dev/null || echo "{}")
+              
+              # Check if project is active/ready
+              # Supabase projects have a "status" field that can be "ACTIVE_HEALTHY", "INACTIVE", etc.
+              if echo "$PROJECT_STATUS" | grep -qE '"status":"[^"]*ACTIVE[^"]*"|"healthy":true'; then
+                echo "✅ Supabase project is active and ready"
+                
+                # Now verify database connection
+                if [ -n "$DATABASE_URL" ]; then
+                  echo "Verifying database connection..."
+                  if node scripts/test-db-connection.js 2>&1; then
+                    echo "✅ Database connection verified"
+                    exit 0
+                  else
+                    echo "⚠️  Project is active but database connection failed, will retry..."
+                  fi
+                else
+                  # If no DATABASE_URL, project is ready but we'll get connection details later
+                  echo "✅ Project is ready (connection details will be retrieved)"
+                  exit 0
+                fi
+              fi
+              
+              attempt=$((attempt + 1))
+              
+              # Show progress every 5 attempts
+              if [ $((attempt % 5)) -eq 0 ]; then
+                echo "Attempt $attempt/$max_attempts: Still waiting for project to be active..."
+                echo "  (New Supabase projects can take 1-5 minutes to initialize)"
+                # Show current status for debugging
+                STATUS=$(echo "$PROJECT_STATUS" | grep -o '"status":"[^"]*' | cut -d'"' -f4 || echo "unknown")
+                echo "  Current project status: $STATUS"
+              else
+                echo "Attempt $attempt/$max_attempts: Project not ready yet, waiting..."
+              fi
+              
+              sleep 15
+            done
             
-            # Show progress every 5 attempts
-            if [ $((attempt % 5)) -eq 0 ]; then
-              echo "Attempt $attempt/$max_attempts: Still waiting..."
-              echo "  (New Supabase projects can take 1-5 minutes to initialize)"
-            else
-              echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
-            fi
+            echo "⚠️  Project status check timed out after $max_attempts attempts (~10 minutes)"
+          else
+            # Fallback: If no PROJECT_ID (using shared database), just check database connection
+            echo "No PROJECT_ID found, checking database connection directly..."
+            echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
             
-            # Wait longer between attempts (15 seconds)
-            sleep 15
-          done
+            max_attempts=40
+            attempt=0
+            
+            while [ $attempt -lt $max_attempts ]; do
+              if node scripts/test-db-connection.js 2>&1; then
+                echo "✅ Database is ready (connection verified)"
+                exit 0
+              fi
+              
+              attempt=$((attempt + 1))
+              if [ $((attempt % 5)) -eq 0 ]; then
+                echo "Attempt $attempt/$max_attempts: Still waiting..."
+              else
+                echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
+              fi
+              sleep 15
+            done
+          fi
 
           echo ""
-          echo "⚠️  Database readiness check timed out after $max_attempts attempts (~10 minutes)"
+          echo "⚠️  Readiness check timed out after $max_attempts attempts (~10 minutes)"
           echo ""
           echo "This might indicate:"
           echo "  - Supabase project is still initializing (can take 1-5 minutes for new projects)"
@@ -130,8 +180,6 @@ jobs:
           echo "  - Network connectivity issues"
           echo ""
           echo "Continuing to migration step - it will provide more detailed error information if connection fails..."
-          # Don't exit 1 - let the migration step handle the actual connection test
-          # This provides better error messages and allows the workflow to continue
 
       - name: Create branch schema (fallback mode)
         if: steps.create-supabase-preview.outputs.schema-name != ''
