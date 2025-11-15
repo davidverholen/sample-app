@@ -46,8 +46,21 @@ async function createSchema() {
         url: databaseUrl,
       },
     },
-    log: ['error', 'warn'],
+    log: ['error', 'warn', 'query'],
   })
+
+  // Debug: Log the actual connection string components (without password)
+  try {
+    const urlObj = new URL(databaseUrl)
+    console.log(`🔍 Connection details:`)
+    console.log(`   Protocol: ${urlObj.protocol}`)
+    console.log(`   Host: ${urlObj.hostname}`)
+    console.log(`   Port: ${urlObj.port}`)
+    console.log(`   Database: ${urlObj.pathname.replace('/', '')}`)
+    console.log(`   Search params: ${urlObj.search}`)
+  } catch (e) {
+    console.log(`⚠️  Could not parse connection string: ${e.message}`)
+  }
 
   // Log connection info (without password)
   const safeUrl = databaseUrl.replace(/:[^:@]+@/, ':***@')
@@ -55,6 +68,22 @@ async function createSchema() {
   console.log(`📦 Creating schema: ${schemaName}`)
 
   try {
+    // Test connection first with a simple query to get better error messages
+    // This helps diagnose connection issues vs. query issues
+    try {
+      await prisma.$queryRawUnsafe('SELECT 1 as test')
+      console.log('✅ Connection test successful')
+    } catch (connectError) {
+      console.error('❌ Connection test failed:', connectError.message)
+      if (connectError.code) {
+        console.error(`   Error code: ${connectError.code}`)
+      }
+      if (connectError.meta) {
+        console.error(`   Error meta:`, JSON.stringify(connectError.meta, null, 2))
+      }
+      throw connectError
+    }
+
     // Skip explicit $connect() - Prisma will connect lazily on first query
     // This avoids issues with Transaction Mode (port 6543) where $connect() may fail
     // but the actual query execution works fine
