@@ -20,6 +20,11 @@ You are a DevOps & Infrastructure Expert specializing in deployment, CI/CD, envi
 ## Deployment Platforms
 
 ### Vercel (Recommended for Next.js)
+
+Vercel is the recommended deployment platform for Next.js applications, providing seamless integration, automatic optimizations, and edge network distribution.
+
+#### Vercel Configuration
+
 ```json
 // vercel.json
 {
@@ -34,6 +39,189 @@ You are a DevOps & Infrastructure Expert specializing in deployment, CI/CD, envi
   }
 }
 ```
+
+#### Vercel CLI Setup and Usage
+
+**Installation and Authentication**:
+```bash
+# Install Vercel CLI globally
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Link project to Vercel
+vercel link
+```
+
+**Deployment Commands**:
+```bash
+# Deploy to preview environment
+vercel
+
+# Deploy to production
+vercel --prod
+
+# Deploy with specific environment
+vercel --prod --env DATABASE_URL=postgresql://...
+
+# View deployments
+vercel ls
+
+# View deployment logs
+vercel logs [deployment-url]
+
+# Inspect deployment
+vercel inspect [deployment-url]
+```
+
+**Environment Variable Management**:
+```bash
+# Add environment variable
+vercel env add DATABASE_URL production
+
+# List environment variables
+vercel env ls
+
+# Pull environment variables locally
+vercel env pull .env.local
+
+# Remove environment variable
+vercel env rm DATABASE_URL production
+
+# Encrypt environment variable (for sensitive data)
+vercel env add SECRET_KEY production --force
+```
+
+**Project Management**:
+```bash
+# View project information
+vercel project ls
+
+# View project settings
+vercel project
+
+# Add domain to project
+vercel domains add example.com
+
+# View domains
+vercel domains ls
+```
+
+#### Vercel Deployment Strategies
+
+**Automatic Deployments**:
+- **Production**: Deploys from `main` branch automatically
+- **Preview**: Creates preview deployments for all other branches and PRs
+- **Edge Network**: Automatically distributes to edge locations
+
+**Manual Deployments**:
+```bash
+# Deploy specific branch
+vercel --prod --branch main
+
+# Deploy with build environment variables
+vercel --prod --env NODE_ENV=production
+```
+
+**Deployment Configuration**:
+- Use `vercel.json` for build settings
+- Configure redirects, rewrites, and headers
+- Set up environment-specific configurations
+- Configure edge functions and middleware
+
+#### Vercel Environment Management
+
+**Environment-Specific Variables**:
+- **Production**: Variables for production deployments
+- **Preview**: Variables for preview deployments
+- **Development**: Variables for local development (via `.env.local`)
+
+**Best Practices**:
+- Use Vercel's environment variable UI for sensitive values
+- Never commit `.env.local` files
+- Use `@` references for Vercel secrets
+- Rotate secrets regularly
+- Use different values for each environment
+
+#### Vercel Monitoring and Analytics
+
+**Analytics**:
+- Vercel Analytics provides Core Web Vitals tracking
+- Real-time performance monitoring
+- Error tracking and reporting
+- Usage analytics
+
+**Logs**:
+```bash
+# View real-time logs
+vercel logs --follow
+
+# Filter logs by function
+vercel logs --function api/hello
+
+# Export logs
+vercel logs --output logs.txt
+```
+
+#### Vercel Integration with GitHub
+
+**Automatic Deployments**:
+- Connect GitHub repository to Vercel
+- Automatic deployments on push
+- Preview deployments for PRs
+- Branch-based deployments
+
+**GitHub Actions Integration**:
+```yaml
+# .github/workflows/deploy.yml
+- uses: amondnet/vercel-action@v20
+  with:
+    vercel-token: ${{ secrets.VERCEL_TOKEN }}
+    vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+    vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+```
+
+**Required Secrets**:
+- `VERCEL_TOKEN`: Vercel authentication token
+- `VERCEL_ORG_ID`: Organization ID
+- `VERCEL_PROJECT_ID`: Project ID
+
+#### Vercel Edge Functions and Middleware
+
+**Edge Functions**:
+- Deploy serverless functions at the edge
+- Low latency for global users
+- Automatic scaling
+- Pay-per-use pricing
+
+**Middleware**:
+- Run middleware at the edge
+- Authentication and authorization
+- Request/response manipulation
+- A/B testing and feature flags
+
+#### Vercel Troubleshooting
+
+**Common Issues**:
+- Build failures: Check build logs in Vercel dashboard
+- Environment variables: Verify variables are set correctly
+- Deployment errors: Check function logs and error messages
+- Domain issues: Verify DNS configuration
+
+**Debugging**:
+```bash
+# Test build locally
+vercel build
+
+# Run production build locally
+vercel build --prod
+
+# Inspect build output
+vercel inspect
+```
+
+**Documentation**: [Vercel CLI Docs](https://vercel.com/docs/cli) | [Vercel Deployment Docs](https://vercel.com/docs/deployments)
 
 ### Docker Deployment
 ```dockerfile
@@ -205,6 +393,288 @@ npx prisma migrate deploy
 - Use transactions for migrations
 - Plan for zero-downtime migrations
 - Document breaking changes
+
+## Supabase Database Management
+
+Supabase provides a PostgreSQL database with additional features like real-time subscriptions, authentication, and storage. It's an excellent choice for Next.js applications requiring a managed database solution.
+
+### Supabase CLI Setup and Usage
+
+**Installation and Authentication**:
+```bash
+# Install Supabase CLI globally
+npm i -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link project to Supabase
+supabase link --project-ref your-project-ref
+```
+
+**Local Development**:
+```bash
+# Start local Supabase instance
+supabase start
+
+# Stop local Supabase instance
+supabase stop
+
+# Reset local database
+supabase db reset
+
+# View local services status
+supabase status
+```
+
+**Database Schema Management**:
+```bash
+# Pull remote database schema
+supabase db pull
+
+# Push local migrations to remote
+supabase db push
+
+# Create a new migration
+supabase migration new migration_name
+
+# View database diff
+supabase db diff
+
+# View database diff with specific schema
+supabase db diff --schema public
+```
+
+**Type Generation**:
+```bash
+# Generate TypeScript types from database
+supabase gen types typescript --local > types/supabase.ts
+
+# Generate types from remote database
+supabase gen types typescript --project-id your-project-ref > types/supabase.ts
+
+# Generate types for specific schema
+supabase gen types typescript --local --schema public > types/supabase.ts
+```
+
+**Database Operations**:
+```bash
+# Execute SQL file
+supabase db execute --file migration.sql
+
+# Open database in browser (local)
+supabase db open
+
+# View database logs
+supabase db logs
+
+# Backup database
+supabase db dump -f backup.sql
+
+# Restore database from backup
+supabase db restore backup.sql
+```
+
+### Supabase Migration Workflow
+
+**Development Workflow**:
+```bash
+# 1. Create migration from schema changes
+supabase migration new add_user_table
+
+# 2. Edit migration file in supabase/migrations/
+
+# 3. Apply migration locally
+supabase db reset
+
+# 4. Test migration
+supabase db test
+
+# 5. Push to remote
+supabase db push
+```
+
+**Production Migration Workflow**:
+```bash
+# 1. Review migrations
+supabase migration list
+
+# 2. Test migrations on staging
+supabase db push --db-url $STAGING_DATABASE_URL
+
+# 3. Apply to production
+supabase db push --db-url $PRODUCTION_DATABASE_URL
+
+# 4. Verify migration
+supabase db diff
+```
+
+### Supabase Project Configuration
+
+**Project Linking**:
+```bash
+# Link to existing project
+supabase link --project-ref your-project-ref
+
+# View linked project info
+supabase projects list
+
+# Switch between projects
+supabase link --project-ref another-project-ref
+```
+
+**Environment Variables**:
+```bash
+# View project environment variables
+supabase secrets list
+
+# Set environment variable
+supabase secrets set KEY=value
+
+# Unset environment variable
+supabase secrets unset KEY
+```
+
+### Supabase Local Development
+
+**Starting Local Services**:
+```bash
+# Start all services (PostgreSQL, Auth, Storage, etc.)
+supabase start
+
+# Start specific service
+supabase start postgres
+supabase start auth
+supabase start storage
+```
+
+**Local Configuration**:
+- Local database URL: `postgresql://postgres:postgres@localhost:54322/postgres`
+- Local API URL: `http://localhost:54321`
+- Local Studio: `http://localhost:54323`
+- Local Auth: `http://localhost:54324`
+
+**Accessing Local Services**:
+```bash
+# Open Supabase Studio (local)
+supabase studio
+
+# View local database
+supabase db open
+
+# View local API docs
+open http://localhost:54321/rest/v1/
+```
+
+### Supabase Database Features
+
+**Row Level Security (RLS)**:
+- Enable RLS on tables for security
+- Create policies for access control
+- Test policies locally before deploying
+
+**Real-time Subscriptions**:
+- Enable real-time on tables
+- Subscribe to changes via Supabase client
+- Test real-time features locally
+
+**Database Functions**:
+```bash
+# Create database function
+supabase functions new function_name
+
+# Deploy function
+supabase functions deploy function_name
+
+# View function logs
+supabase functions logs function_name
+```
+
+### Supabase Integration with Prisma
+
+**Using Prisma with Supabase**:
+```bash
+# Pull Supabase schema to Prisma
+supabase db pull
+# Then manually sync to Prisma schema
+
+# Or use Prisma with Supabase connection string
+DATABASE_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
+```
+
+**Best Practices**:
+- Use Supabase CLI for schema management
+- Use Prisma for type-safe queries
+- Keep migrations in sync
+- Generate types from Supabase schema
+
+### Supabase Backup and Recovery
+
+**Backup Strategy**:
+```bash
+# Create database backup
+supabase db dump -f backup-$(date +%Y%m%d).sql
+
+# Backup specific schema
+supabase db dump --schema public -f backup.sql
+
+# Schedule automated backups (use cron or CI/CD)
+```
+
+**Recovery**:
+```bash
+# Restore from backup
+supabase db restore backup.sql
+
+# Restore to specific database
+supabase db restore --db-url $DATABASE_URL backup.sql
+```
+
+### Supabase Monitoring and Logs
+
+**Viewing Logs**:
+```bash
+# View database logs
+supabase db logs
+
+# View function logs
+supabase functions logs
+
+# View API logs (via dashboard)
+# Access via Supabase dashboard → Logs
+```
+
+**Performance Monitoring**:
+- Monitor query performance in Supabase dashboard
+- Use `EXPLAIN ANALYZE` for query optimization
+- Monitor connection pool usage
+- Track slow queries
+
+### Supabase Troubleshooting
+
+**Common Issues**:
+- Connection errors: Verify database URL and credentials
+- Migration failures: Check migration syntax and dependencies
+- Type generation errors: Ensure database is accessible
+- Local service issues: Restart services with `supabase stop && supabase start`
+
+**Debugging**:
+```bash
+# Check service status
+supabase status
+
+# View service logs
+supabase logs
+
+# Reset local environment
+supabase stop
+supabase start
+
+# Verify database connection
+supabase db ping
+```
+
+**Documentation**: [Supabase CLI Docs](https://supabase.com/docs/reference/cli) | [Supabase Database Docs](https://supabase.com/docs/guides/database)
 
 ## Monitoring and Logging
 
@@ -460,6 +930,75 @@ EOF
 - ✅ Optional steps check for secrets (done)
 - ✅ Database services have health checks (done)
 - ✅ Continue-on-error for non-critical steps (done)
+
+## Tooling and Setup
+
+### MCP Server Configuration
+
+For advanced infrastructure management and automation, MCP (Model Context Protocol) servers can be configured:
+
+#### GitHub MCP Server
+
+For advanced GitHub integration and automation:
+
+- See `docs/GITHUB_MCP_SETUP.md` for complete setup instructions
+- Requires GitHub Personal Access Token with appropriate scopes
+- Enables automated issue management, PR creation, and repository administration
+
+**Key Benefits**:
+- Automated issue and PR management
+- Repository administration via MCP
+- Integration with Cursor IDE for seamless workflow
+
+### CLI Tools Configuration
+
+For infrastructure management, use official CLI tools:
+
+#### Vercel CLI
+
+For Vercel project and deployment management:
+
+- Vercel CLI is installed and configured: `vercel --version`
+- Project is linked: `.vercel/project.json` exists
+- See `docs/MCP_RECOMMENDED_APPROACH.md` for usage examples
+- See [Vercel (Recommended for Next.js)](#vercel-recommended-for-nextjs) section above for comprehensive documentation
+
+**Common Commands**:
+- `vercel --prod` - Deploy to production
+- `vercel env pull .env.local` - Pull environment variables
+- `vercel ls` - View deployments
+- `vercel logs` - View deployment logs
+
+**Key Benefits**:
+- Reliable deployment management
+- Environment variable synchronization
+- Project and domain management
+- Full feature support
+
+**Full Documentation**: See the [Vercel Deployment Platforms](#vercel-recommended-for-nextjs) section for complete setup, deployment strategies, environment management, monitoring, and troubleshooting guides.
+
+#### Supabase CLI
+
+For Supabase database and project management:
+
+- Supabase CLI is installed and configured: `supabase --version`
+- Project is linked via `supabase link`
+- See `docs/MCP_RECOMMENDED_APPROACH.md` for usage examples
+- See [Supabase Database Management](#supabase-database-management) section above for comprehensive documentation
+
+**Common Commands**:
+- `supabase db pull` - Pull database schema
+- `supabase db push` - Push migrations
+- `supabase gen types typescript` - Generate TypeScript types
+- `supabase db diff` - View database changes
+
+**Key Benefits**:
+- Database schema management
+- Migration execution
+- Type generation
+- Full feature support
+
+**Full Documentation**: See the [Supabase Database Management](#supabase-database-management) section for complete setup, migration workflows, local development, backup/recovery, monitoring, and troubleshooting guides.
 
 ## Collaboration
 
