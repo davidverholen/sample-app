@@ -6,6 +6,17 @@ This document describes how to configure GitHub branch protection rules to enfor
 
 While Husky hooks provide local enforcement, GitHub branch protection rules provide server-side enforcement that cannot be bypassed. This is the final line of defense for maintaining code quality and workflow compliance.
 
+## Solo Developer Configuration
+
+If you're the only contributor to this repository, you can configure branch protection to allow self-merges while still enforcing self-review through workflow rules. This maintains code quality standards while allowing you to work independently.
+
+**Key Configuration for Solo Developers**:
+
+- Set **Required number of reviewers** to `0`
+- Enable **Allow specified actors to bypass required pull requests** (for admins)
+- Enforce **self-review checklist** via workflow rules (see `.cursor/rules/git-workflow-enforcement.mdc`)
+- All CI/CD status checks must still pass
+
 ## Required Branch Protection Rules
 
 ### `main` Branch Protection
@@ -13,6 +24,15 @@ While Husky hooks provide local enforcement, GitHub branch protection rules prov
 Configure the following rules for the `main` branch:
 
 #### 1. Require Pull Request Reviews
+
+**For Solo Developers**:
+
+- ✅ **Require a pull request before merging**
+- ⚠️ **Required number of reviewers**: 0 (self-review enforced via workflow rules)
+- ✅ **Allow specified actors to bypass required pull requests**: Enable for repository admins
+- ✅ **Dismiss stale pull request approvals when new commits are pushed** (if enabled)
+
+**For Teams**:
 
 - ✅ **Require a pull request before merging**
 - ✅ **Required number of reviewers**: 1 (2 for security-related changes)
@@ -58,6 +78,14 @@ Configure the following rules for the `main` branch:
 Configure similar rules for `develop`, but slightly less strict:
 
 #### 1. Require Pull Request Reviews
+
+**For Solo Developers**:
+
+- ✅ **Require a pull request before merging**
+- ⚠️ **Required number of reviewers**: 0 (self-review enforced via workflow rules)
+- ✅ **Allow specified actors to bypass required pull requests**: Enable for repository admins
+
+**For Teams**:
 
 - ✅ **Require a pull request before merging**
 - ✅ **Required number of reviewers**: 1

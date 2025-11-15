@@ -197,10 +197,43 @@ MUST include:
 
 ### PR Review Requirements
 
-- Minimum 1 approval required (2 for security-related changes)
+**For Solo Developers**:
+- **Self-review is REQUIRED** before merging any PR
+- Complete the self-review checklist (see below)
 - All CI checks MUST pass
 - No merge conflicts
 - Branch MUST be up to date with target
+
+**For Teams**:
+- Minimum 1 external approval required (2 for security-related changes)
+- All CI checks MUST pass
+- No merge conflicts
+- Branch MUST be up to date with target
+
+### Self-Review Checklist (MANDATORY for Solo Developers)
+
+Before merging ANY PR, you MUST complete this checklist:
+
+- [ ] **Code Review**: Reviewed all changed files line-by-line
+- [ ] **Functionality**: Verified the code works as intended
+- [ ] **Testing**: All tests pass and coverage meets threshold (80%+)
+- [ ] **Code Quality**: No linting errors, proper formatting, TypeScript strict mode
+- [ ] **Documentation**: Updated README/CHANGELOG/docs if needed
+- [ ] **Security**: No secrets committed, input validation implemented
+- [ ] **Performance**: No obvious performance issues
+- [ ] **Accessibility**: UI changes are accessible (WCAG 2.1 AA)
+- [ ] **Error Handling**: Error cases are handled appropriately
+- [ ] **Edge Cases**: Edge cases are considered and tested
+- [ ] **CI Checks**: All CI/CD checks pass
+- [ ] **Git Standards**: Commit messages and branch name follow conventions
+
+**Self-Review Process**:
+1. Wait at least 1 hour after creating PR (fresh eyes)
+2. Review code as if reviewing someone else's work
+3. Test the changes locally
+4. Complete the checklist above
+5. Add a self-review comment to the PR documenting completion
+6. Only then proceed with merge
 
 ## Release Process Enforcement
 
@@ -220,11 +253,20 @@ Before merging release PR:
 - [ ] All tests pass
 - [ ] Documentation updated
 - [ ] Release notes prepared
-- [ ] 2 approvals obtained
+- [ ] **Solo Developers**: Self-review checklist completed
+- [ ] **Teams**: 2 approvals obtained
 - [ ] All CI checks pass
 
 ### Hotfix Process
 
+**For Solo Developers**:
+1. MUST branch from `main`
+2. MUST include issue number in branch name
+3. MUST complete self-review checklist (see Self-Review Checklist above)
+4. MUST merge to both `main` and `develop`
+5. MUST create release tag
+
+**For Teams**:
 1. MUST branch from `main`
 2. MUST include issue number in branch name
 3. MUST require 2 approvals
@@ -383,6 +425,43 @@ git push origin v1.2.3
 - ALWAYS document breaking changes
 - ALWAYS follow semantic versioning
 - ALWAYS maintain changelog
+
+## PR Review Best Practices
+
+### Security Checks
+- **MUST** fail builds for high/critical security vulnerabilities
+- Security scans should NOT use `continue-on-error: true` for blocking issues
+- npm audit should fail for `--audit-level=high` or `--audit-level=critical`
+- Secret scanning (TruffleHog) should block merges when secrets are detected
+
+### Test Coverage Requirements
+- **MANDATORY**: 80% minimum coverage threshold (branches, functions, lines, statements)
+- Coverage thresholds MUST be enforced in CI/CD - builds will fail if not met
+- Jest configuration should explicitly fail if thresholds aren't met
+- CI workflow should verify coverage file generation AND threshold compliance
+
+### Test Quality Standards
+- Tests MUST include error handling scenarios (not just happy paths)
+- Edge cases MUST be tested (null/undefined props, API failures, etc.)
+- E2E tests MUST cover critical user flows (authentication, form submissions, error handling)
+- Test mocks MUST cover both success and error scenarios
+
+### CI/CD Workflow Best Practices
+- PR summary jobs should have explicit dependencies (not all jobs)
+- Use `needs: [lint, type-check, test, build]` for core checks
+- Optional jobs (like E2E) should not block PR summary
+- All jobs MUST have timeouts to prevent infinite hangs
+- Artifact uploads should use `if: always()` to capture failures
+
+### Code Review Checklist
+When reviewing PRs, ensure:
+- [ ] Security checks are blocking (not just warnings)
+- [ ] Coverage thresholds are explicitly verified
+- [ ] Error handling is tested
+- [ ] Edge cases are covered
+- [ ] E2E tests exist for critical flows
+- [ ] CI workflow dependencies are explicit
+- [ ] All jobs have appropriate timeouts
 
 ## References
 
