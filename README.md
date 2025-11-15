@@ -107,9 +107,18 @@ This project follows a strict Git workflow with automated enforcement. See the [
 
 **Quick Reference**:
 - **Branching**: `main` (production), `develop` (staging), `feature/*`, `bugfix/*`, `hotfix/*`, `release/*`
-- **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org/) format
+- **Branch Naming**: Enforced via pre-push hook (must follow `feature/123-description` pattern)
+- **Protected Branches**: Direct pushes to `main`/`develop` are blocked (use PRs)
+- **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org/) format (enforced via git hooks)
 - **PRs**: Required for all changes, must pass CI checks
 - **Releases**: Semantic versioning with automated release workflow
+
+**Enforcement**:
+- ✅ Pre-commit: Linting, formatting, type-checking, tests
+- ✅ Commit message: Conventional Commits format validation
+- ✅ Pre-push: Branch naming validation, protected branch checks, build, full test suite
+- ✅ CI/CD: All checks run on every PR
+- ✅ GitHub Protection: Configure branch protection rules (see [GitHub Branch Protection Setup](./docs/GITHUB_BRANCH_PROTECTION.md))
 
 **Setup**:
 ```bash

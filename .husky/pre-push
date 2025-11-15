@@ -1,6 +1,50 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+# Get current branch name
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+# Branch naming validation
+echo "🔍 Validating branch name..."
+
+# Block direct pushes to main/develop (these should only be done via PR)
+if [ "$branch" = "main" ] || [ "$branch" = "develop" ]; then
+  echo "❌ ERROR: Direct pushes to '$branch' are not allowed!"
+  echo ""
+  echo "Protected branches (main, develop) can only be updated via Pull Requests."
+  echo "Please create a feature/bugfix/hotfix branch instead:"
+  echo "  git checkout -b feature/123-your-feature"
+  echo "  git checkout -b bugfix/456-your-fix"
+  echo "  git checkout -b hotfix/789-critical-fix"
+  echo ""
+  exit 1
+fi
+
+# Validate branch naming convention
+if ! echo "$branch" | grep -qE "^(feature|bugfix|hotfix|release)/"; then
+  echo "❌ Invalid branch name: $branch"
+  echo ""
+  echo "Branch must follow the naming convention:"
+  echo "  - feature/123-short-description"
+  echo "  - bugfix/456-short-description"
+  echo "  - hotfix/789-short-description"
+  echo "  - release/v1.2.3"
+  echo ""
+  echo "Current branch: $branch"
+  exit 1
+fi
+
+# Check for issue number in feature/bugfix/hotfix branches (warn, don't block)
+if echo "$branch" | grep -qE "^(feature|bugfix|hotfix)/"; then
+  if ! echo "$branch" | grep -qE "[0-9]+"; then
+    echo "⚠️  Warning: Branch name doesn't include issue number"
+    echo "Recommended format: feature/123-short-description"
+    echo "Continuing anyway, but please include issue number in future branches..."
+  fi
+fi
+
+echo "✅ Branch name is valid: $branch"
+
 # Run build to ensure everything compiles
 echo "🏗️  Building application..."
 npm run build || exit 1

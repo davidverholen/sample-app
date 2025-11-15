@@ -458,6 +458,8 @@ Automated checks on every PR:
 4. **E2E Tests**: Playwright tests
 5. **Build**: Next.js build verification
 6. **Security**: Dependency vulnerability scanning
+7. **Commit Message Validation**: Conventional Commits format
+8. **PR Title Validation**: Conventional Commits format
 
 ### Continuous Deployment
 
@@ -470,6 +472,53 @@ See `.github/workflows/` for:
 - `ci.yml`: Continuous Integration
 - `release.yml`: Release automation
 - `security.yml`: Security scanning
+
+## Workflow Enforcement
+
+### Local Enforcement (Husky Hooks)
+
+The following checks are enforced locally via Git hooks:
+
+1. **Pre-commit Hook** (`.husky/pre-commit`):
+   - Linting (ESLint)
+   - Code formatting (Prettier)
+   - Type checking (TypeScript)
+   - Unit tests
+
+2. **Commit Message Hook** (`.husky/commit-msg`):
+   - Validates Conventional Commits format
+   - Checks subject line length (max 72 characters)
+   - Ensures proper type and scope
+
+3. **Pre-push Hook** (`.husky/pre-push`):
+   - **Branch naming validation**: Enforces naming conventions
+   - **Protected branch check**: Blocks direct pushes to `main`/`develop`
+   - Build verification
+   - Full test suite with coverage check (80% minimum)
+
+### Server-Side Enforcement (GitHub)
+
+For complete protection, configure GitHub branch protection rules:
+
+- **Branch Protection**: Prevents direct pushes to protected branches
+- **Required Reviews**: Ensures code review before merging
+- **Status Checks**: Requires all CI checks to pass
+- **PR Requirements**: Enforces PR workflow
+
+See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed configuration instructions.
+
+### Enforcement Summary
+
+| Rule | Local Hook | CI/CD | GitHub Protection |
+|------|------------|-------|-------------------|
+| Commit message format | ✅ commit-msg | ✅ Yes | ⚠️ Optional |
+| Code quality | ✅ pre-commit | ✅ Yes | ✅ Yes |
+| Branch naming | ✅ pre-push | ❌ No | ⚠️ Optional |
+| Direct commits to main/develop | ✅ pre-push | ❌ No | ✅ Yes |
+| PR requirements | ❌ No | ✅ Yes | ✅ Yes |
+| Required reviews | ❌ No | ❌ No | ✅ Yes |
+
+**Note**: Hooks can be bypassed with `--no-verify`, but this should only be used in emergencies. GitHub protection rules cannot be bypassed (except by repository admins).
 
 ## Best Practices
 
