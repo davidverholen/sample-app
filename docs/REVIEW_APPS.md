@@ -1,15 +1,17 @@
 # Review Apps with Vercel and Supabase
 
-This document describes the review apps (preview deployments) setup for pull requests, which automatically deploy each PR branch to Vercel, create a Supabase preview instance, and run E2E tests.
+This document describes the review apps (preview deployments) setup for pull requests, which automatically deploy each PR branch to Vercel, create isolated PostgreSQL schemas within a single Supabase project, and run E2E tests.
 
 ## Overview
 
 When a pull request is opened or updated, the review apps workflow:
 
 1. **Deploys to Vercel Preview** - Creates a preview deployment of the PR branch
-2. **Creates Supabase Preview Instance** - Sets up a branch-based database for the preview
+2. **Creates PostgreSQL Schema** - Sets up an isolated schema within the main Supabase project for the preview
 3. **Runs E2E Tests** - Executes end-to-end tests against the preview deployment
-4. **Cleans Up** - Removes preview resources when the PR is closed
+4. **Cleans Up** - Removes preview schema when the PR is closed
+
+**Key Feature**: This implementation uses PostgreSQL schema-based isolation within a single Supabase project, making it compatible with the Supabase free tier (which allows only 2 active projects).
 
 ## Workflow Triggers
 
@@ -72,13 +74,17 @@ The following secrets must be configured in GitHub Settings → Secrets and vari
 
 - `SUPABASE_ACCESS_TOKEN` - Supabase access token
   - Get from: [Supabase Dashboard → Account Settings → Access Tokens](https://supabase.com/dashboard/account/tokens)
+  - Required permissions: `projects:read` (to fetch project details)
 - `SUPABASE_PROJECT_REF` - Supabase project reference ID
   - Get from: Supabase project settings → General → Reference ID
+- `SUPABASE_DB_PASSWORD` - **REQUIRED** - Main Supabase project's database password
+  - Get from: Supabase Dashboard → Project Settings → Database → Connection string
+  - Extract the password from the connection string: `postgresql://postgres.[PROJECT-REF]:[PASSWORD]@...`
+  - This is used to connect to the main database to create/drop schemas
 
 ### Optional Secrets
 
 - `NEXTAUTH_SECRET` - NextAuth secret (if not provided, a random secret is generated per preview)
-- `SUPABASE_DB_PASSWORD` - Override password for Supabase preview databases (otherwise generated automatically)
 
 ## How It Works
 
@@ -87,11 +93,11 @@ The following secrets must be configured in GitHub Settings → Secrets and vari
 The `deploy-preview` job:
 
 1. Checks out the PR branch code
-2. Creates a Supabase preview instance via Management API
-3. Applies database migrations to the preview instance
+2. Creates a PostgreSQL schema (e.g., `preview_pr7`) in the main Supabase project
+3. Applies database migrations to the preview schema using `search_path`
 4. Seeds the preview database with test data
 5. Deploys the branch to Vercel as a preview deployment
-6. Sets preview-specific environment variables on Vercel
+6. Sets preview-specific environment variables on Vercel (including schema-specific DATABASE_URL)
 7. Comments on the PR with the preview URL
 
 ### 2. E2E Preview Job
@@ -108,43 +114,58 @@ The `e2e-preview` job:
 The `cleanup-preview` job:
 
 1. Runs when a PR is closed
-2. Deletes the Supabase preview instance
+2. Drops the PostgreSQL schema (e.g., `DROP SCHEMA preview_pr7 CASCADE`)
 3. Vercel automatically cleans up preview deployments
 4. Comments on the PR confirming cleanup
 
-## Supabase Preview Instances
+## Supabase Preview Schemas
 
-Review apps create new Supabase projects via the Management API for each pull request. This provides complete isolation between preview instances.
+Review apps create isolated PostgreSQL schemas within a single Supabase project for each pull request. This provides complete data isolation while working within the free tier's project limits.
+
+**How It Works:**
+
+- Each PR gets its own PostgreSQL schema (e.g., `preview_pr7`, `preview_pr8`)
+- Schemas are created in the main Supabase project's database
+- Connection strings use `search_path` parameter to target specific schemas
+- Prisma migrations apply to the schema-specific search path
+- Schemas are dropped when PRs are closed
 
 **Requirements:**
 
-- Supabase Team plan with Management API access (required)
-- `SUPABASE_ACCESS_TOKEN` with project creation permissions
-- `SUPABASE_PROJECT_REF` for organization ID derivation
+- Single Supabase project (works with free tier!)
+- `SUPABASE_ACCESS_TOKEN` with `projects:read` permission (to fetch project details)
+- `SUPABASE_PROJECT_REF` for the main project
+- `SUPABASE_DB_PASSWORD` for the main project's database password
 
 **Benefits:**
 
-- Complete isolation between preview instances
-- No risk of data conflicts
-- True branch-based databases
-- Consistent behavior across all previews
+- ✅ Works with Supabase free tier (no Team plan required)
+- ✅ Complete data isolation between preview instances
+- ✅ Fast schema creation (instant vs. 30+ seconds for projects)
+- ✅ Easy cleanup (drop schema vs. delete project)
+- ✅ No API rate limits for schema operations
+- ✅ True branch-based database isolation
 
 **Limitations:**
 
-- Requires Supabase Team plan
-- API rate limits may apply
-- Projects take 30+ seconds to create/delete
+- ⚠️ All schemas share the same database resources (500MB limit on free tier)
+- ⚠️ Need to monitor total database size across all preview schemas
+- ⚠️ Schema names must be unique (PR number ensures this)
+- ⚠️ Requires main project's database password to be stored as a secret
 
 ## Environment Variables
 
 Preview deployments receive the following environment variables:
 
-- `DATABASE_URL` - Connection string for the Supabase preview instance
+- `DATABASE_URL` - Connection string for the preview schema (includes `search_path=preview_pr{NUMBER}`)
+  - Format: `postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/postgres?sslmode=require&search_path=preview_pr7`
 - `NEXTAUTH_SECRET` - Generated per preview (or from secret)
 - `NEXTAUTH_URL` - Vercel preview URL
 - `NEXT_PUBLIC_APP_URL` - Vercel preview URL
 
 **Important Note**: Environment variables are set for the `preview` environment scope, which means all preview deployments share the same environment variables. The workflow sets these variables right before each deployment to ensure the latest values are used. However, if multiple PRs deploy simultaneously, they may temporarily overwrite each other's variables. For production use with many concurrent PRs, consider using the Vercel API to set deployment-specific environment variables.
+
+**Schema Isolation**: Each preview deployment uses a unique `search_path` parameter in the DATABASE_URL, ensuring that Prisma operations target the correct schema. This provides complete data isolation between preview instances.
 
 ## Playwright Configuration
 
@@ -174,17 +195,25 @@ The main CI workflow (`.github/workflows/ci.yml`) has been updated to:
 - Check Vercel deployment logs in the workflow run
 - Ensure build succeeds locally
 
-### Supabase Preview Instance Creation Fails
+### Supabase Preview Schema Creation Fails
 
-**Issue**: Supabase preview instance creation fails
+**Issue**: PostgreSQL schema creation fails
 
 **Solutions**:
 
-- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions (`projects:read` and `projects:write`)
-- Ensure you have a Supabase Team plan (required for Management API access)
-- Check Supabase API rate limits
-- Verify `SUPABASE_PROJECT_REF` is correct
-- Ensure the `db_pass` requirement is satisfied (the workflow auto-generates a strong password per preview, but you can also provide `SUPABASE_DB_PASSWORD` to reuse a known value)
+- Verify `SUPABASE_ACCESS_TOKEN` has `projects:read` permission (to fetch project details)
+- Verify `SUPABASE_DB_PASSWORD` is set correctly (main project's database password)
+- Check that `SUPABASE_PROJECT_REF` is correct
+- Verify the main Supabase project is accessible
+- Check database connection string format
+- Ensure Prisma Client is generated before schema creation
+- Check workflow logs for specific error messages
+
+**Common Errors**:
+
+- `SUPABASE_DB_PASSWORD is required but not set`: Add the main project's database password to GitHub secrets
+- `Failed to extract database host`: Verify `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` are correct
+- `Error creating schema`: Check database permissions and connection string
 
 ### E2E Tests Fail on Preview
 
@@ -206,8 +235,12 @@ The main CI workflow (`.github/workflows/ci.yml`) has been updated to:
 
 - Check cleanup script logs in workflow
 - Vercel automatically cleans up preview deployments
-- Supabase preview instances may need manual cleanup if script fails
-- Check Supabase dashboard for orphaned projects
+- Supabase preview schemas may need manual cleanup if script fails
+- To manually drop a schema, connect to your Supabase database and run:
+  ```sql
+  DROP SCHEMA IF EXISTS preview_pr{NUMBER} CASCADE;
+  ```
+- Check Supabase dashboard → Database → Schemas to see all preview schemas
 
 ## Manual Testing
 
@@ -222,27 +255,30 @@ To test the review apps workflow manually:
 
 ## Best Practices
 
-1. **Monitor Resource Usage**: Review apps create resources that consume Supabase/Vercel quotas
-2. **Clean Up Orphaned Resources**: Periodically check for orphaned preview instances
+1. **Monitor Resource Usage**: Review apps create schemas that share the main database's resources (500MB on free tier)
+2. **Clean Up Orphaned Schemas**: Periodically check for orphaned preview schemas and drop them manually if needed
 3. **Set Timeouts**: Workflow has timeouts to prevent infinite hangs
 4. **Review Test Results**: Always check E2E test results before merging
 5. **Use Branch Naming**: Follow branch naming conventions for better organization
+6. **Monitor Database Size**: Keep an eye on total database size across all schemas to stay within free tier limits
 
 ## Limitations
 
-- Supabase preview instances require Management API access (Team plan) - this is a hard requirement
+- ⚠️ All preview schemas share the same database resources (500MB limit on free tier)
+- ⚠️ Need to monitor total database size across all preview schemas
+- ⚠️ Requires main project's database password to be stored as a secret
 - Vercel preview deployments are automatically cleaned up after 30 days of inactivity
 - E2E tests run sequentially (not in parallel) to avoid resource conflicts
-- Preview instances share the same Supabase region as the main project
-- Project creation/deletion takes 30+ seconds
+- Schema creation is instant (no waiting for project initialization)
 
 ## Future Improvements
 
-- [ ] Support for multiple Supabase regions
+- [ ] Automatic cleanup of stale preview schemas (older than X days)
 - [ ] Parallel E2E test execution
-- [ ] Automatic cleanup of stale preview instances
-- [ ] Preview instance health checks
+- [ ] Schema health checks
+- [ ] Database size monitoring and alerts
 - [ ] Integration with Supabase Branching (when available)
+- [ ] Support for schema-level backups
 
 ## Related Documentation
 

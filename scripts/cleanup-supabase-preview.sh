@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script to cleanup a Supabase preview instance for a PR branch
+# Script to cleanup a PostgreSQL schema for a PR preview
 # Usage: ./cleanup-supabase-preview.sh <branch-name> <pr-number> <access-token> <project-ref>
 
 BRANCH_NAME="$1"
@@ -22,55 +22,124 @@ if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
   exit 1
 fi
 
-# Sanitize branch name for use in instance name (remove special characters)
+if [ -z "$SUPABASE_PROJECT_REF" ]; then
+  echo "❌ Error: SUPABASE_PROJECT_REF is required but not set"
+  exit 1
+fi
+
+# Validate that main database password is available
+if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+  echo "❌ Error: SUPABASE_DB_PASSWORD is required but not set"
+  echo "Please set SUPABASE_DB_PASSWORD in GitHub secrets with your main Supabase project's database password"
+  exit 1
+fi
+
+# Generate schema name: preview_pr{NUMBER} (must match create script)
+SCHEMA_NAME="preview_pr${PR_NUMBER}"
+# Sanitize to ensure valid PostgreSQL identifier (alphanumeric and underscores only)
+SCHEMA_NAME=$(echo "$SCHEMA_NAME" | sed 's/[^a-zA-Z0-9_]/_/g' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
+
+# Sanitize branch name for use in instance name (for display/logging)
 SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
 INSTANCE_NAME="preview-${SANITIZED_BRANCH}-pr${PR_NUMBER}"
 
-echo "🧹 Cleaning up Supabase preview instance: $INSTANCE_NAME"
+echo "🧹 Cleaning up PostgreSQL schema: $SCHEMA_NAME"
+echo "📋 Instance name: $INSTANCE_NAME"
 
-# Delete the Supabase project via Management API
+# Use Supabase Management API to get main project database connection details
 API_URL="https://api.supabase.com/v1/projects"
 
-# List projects and find the one matching our instance name
-echo "📋 Searching for project: $INSTANCE_NAME"
-PROJECTS=$(curl -s -X GET "$API_URL" \
+# Get main project details to extract database connection info
+echo "📋 Fetching main project details: $SUPABASE_PROJECT_REF"
+PROJECT_DETAILS=$(curl -s -X GET "$API_URL/$SUPABASE_PROJECT_REF" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" 2>&1)
 
-# Check for API errors
-if echo "$PROJECTS" | grep -q '"error"'; then
-  echo "❌ Error: Failed to list projects"
-  echo "Response: $PROJECTS"
+# Check if API call was successful
+if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
+  echo "❌ Error: Failed to fetch project details"
+  echo "Response: $PROJECT_DETAILS"
   exit 1
 fi
 
-# Extract project ID if it exists
-PROJECT_ID=$(echo "$PROJECTS" | grep -o "\"id\":\"[^\"]*\",\"name\":\"$INSTANCE_NAME\"" | grep -o "\"id\":\"[^\"]*" | cut -d'"' -f4 || echo "")
+# Extract DB_HOST from nested database.host structure
+DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
+DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
+DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
 
-if [ -z "$PROJECT_ID" ]; then
-  echo "⚠️  Project not found: $INSTANCE_NAME"
-  echo "Project may have already been deleted or never created"
-  exit 0
-fi
-
-echo "🗑️  Deleting Supabase project: $PROJECT_ID"
-DELETE_RESPONSE=$(curl -s -X DELETE "$API_URL/$PROJECT_ID" \
-  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" 2>&1)
-
-# Check if deletion was successful
-if echo "$DELETE_RESPONSE" | grep -q '"error"'; then
-  echo "❌ Error: Failed to delete project"
-  echo "Response: $DELETE_RESPONSE"
+if [ -z "$DB_HOST" ]; then
+  echo "❌ Error: Failed to extract database host from project details"
+  echo "Response: $PROJECT_DETAILS"
   exit 1
 fi
 
-if echo "$DELETE_RESPONSE" | grep -qE "deleted|success|200"; then
-  echo "✅ Successfully deleted Supabase project"
-  exit 0
-else
-  echo "⚠️  Unexpected response from delete API"
-  echo "Response: $DELETE_RESPONSE"
-  exit 0  # Don't fail cleanup
+# Construct main database connection string
+MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+
+# Drop PostgreSQL schema using Prisma
+echo "🗑️  Dropping PostgreSQL schema: $SCHEMA_NAME"
+
+# Use node with Prisma to drop the schema
+TEMP_SCRIPT=$(mktemp)
+cat > "$TEMP_SCRIPT" << 'EOF'
+const { PrismaClient } = require('@prisma/client');
+
+const prisma = new PrismaClient({
+  log: ['error'],
+});
+
+async function dropSchema() {
+  const schemaName = process.env.SCHEMA_NAME;
+  if (!schemaName) {
+    console.error('❌ Error: SCHEMA_NAME environment variable is not set');
+    process.exit(1);
+  }
+
+  try {
+    // Check if schema exists first
+    // Use template literal for schema name (already sanitized)
+    const schemas = await prisma.$queryRawUnsafe(`
+      SELECT schema_name 
+      FROM information_schema.schemata 
+      WHERE schema_name = '${schemaName}'
+    `);
+
+    if (Array.isArray(schemas) && schemas.length === 0) {
+      console.log(`⚠️  Schema not found: ${schemaName}`);
+      console.log('Schema may have already been deleted or never created');
+      await prisma.$disconnect();
+      process.exit(0);
+    }
+
+    // Drop schema with CASCADE to remove all objects in the schema
+    await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    console.log(`✅ Schema dropped successfully: ${schemaName}`);
+    await prisma.$disconnect();
+    process.exit(0);
+  } catch (error) {
+    console.error(`❌ Error dropping schema: ${error.message}`);
+    if (error.code) {
+      console.error(`   Error code: ${error.code}`);
+    }
+    await prisma.$disconnect().catch(() => {});
+    process.exit(1);
+  }
+}
+
+dropSchema();
+EOF
+
+# Run the schema drop script
+export DATABASE_URL="$MAIN_DATABASE_URL"
+export SCHEMA_NAME="$SCHEMA_NAME"
+if ! node "$TEMP_SCRIPT"; then
+  echo "❌ Error: Failed to drop schema"
+  rm -f "$TEMP_SCRIPT"
+  exit 1
 fi
+
+rm -f "$TEMP_SCRIPT"
+
+echo "✅ Preview schema cleanup completed"
+exit 0
 

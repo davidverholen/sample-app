@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Script to create a Supabase preview instance for a PR branch
+# Script to create a PostgreSQL schema for a PR preview within the main Supabase project
 # Usage: ./create-supabase-preview.sh <branch-name> <pr-number> <access-token> <project-ref>
 
 BRANCH_NAME="$1"
@@ -34,35 +34,32 @@ if [ -z "$SUPABASE_PROJECT_REF" ]; then
   exit 1
 fi
 
-# Generate (or reuse) a database password for the preview project
-generate_db_password() {
-  # shellcheck disable=SC2005
-  echo "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
-}
-
-# Allow optional override via env or fifth arg (primarily for testing)
-ARG_DB_PASSWORD="$5"
-PREVIEW_DB_PASSWORD="${SUPABASE_DB_PASSWORD:-${ARG_DB_PASSWORD:-$(generate_db_password)}}"
-
-if [ -z "$PREVIEW_DB_PASSWORD" ]; then
-  echo "❌ Error: Failed to determine database password (generation/override issue)"
+# Validate that main database password is available
+if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+  echo "❌ Error: SUPABASE_DB_PASSWORD is required but not set"
+  echo "Please set SUPABASE_DB_PASSWORD in GitHub secrets with your main Supabase project's database password"
+  echo "You can find this in: Supabase Dashboard → Project Settings → Database → Connection string"
   exit 1
 fi
 
-echo "🔐 Using generated database password for preview (value redacted)"
+# Generate schema name: preview_pr{NUMBER}
+# PostgreSQL schema names are case-insensitive and max 63 characters
+SCHEMA_NAME="preview_pr${PR_NUMBER}"
+# Sanitize to ensure valid PostgreSQL identifier (alphanumeric and underscores only)
+SCHEMA_NAME=$(echo "$SCHEMA_NAME" | sed 's/[^a-zA-Z0-9_]/_/g' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
 
-# Sanitize branch name for use in instance name (remove special characters)
+# Sanitize branch name for use in instance name (for display/logging)
 SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | cut -c1-30)
 INSTANCE_NAME="preview-${SANITIZED_BRANCH}-pr${PR_NUMBER}"
 
-echo "🚀 Creating Supabase preview instance: $INSTANCE_NAME"
+echo "🚀 Creating PostgreSQL schema for preview: $SCHEMA_NAME"
+echo "📋 Instance name: $INSTANCE_NAME"
 
-# Use Supabase Management API to create a new project for the preview
-# This requires a Supabase Team plan with API access
+# Use Supabase Management API to get main project database connection details
 API_URL="https://api.supabase.com/v1/projects"
 
-# Get organization ID from project details
-echo "📋 Fetching organization ID from project: $SUPABASE_PROJECT_REF"
+# Get main project details to extract database connection info
+echo "📋 Fetching main project details: $SUPABASE_PROJECT_REF"
 PROJECT_DETAILS=$(curl -s -X GET "$API_URL/$SUPABASE_PROJECT_REF" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" 2>&1)
@@ -74,93 +71,90 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
   exit 1
 fi
 
-SUPABASE_ORG_ID=$(echo "$PROJECT_DETAILS" | grep -o '"organization_id":"[^"]*' | cut -d'"' -f4 || echo "")
-
-if [ -z "$SUPABASE_ORG_ID" ]; then
-  echo "❌ Error: Failed to extract organization_id from project details"
-  echo "Please verify SUPABASE_PROJECT_REF is correct and SUPABASE_ACCESS_TOKEN has proper permissions"
-  exit 1
-fi
-
-echo "✅ Found organization ID: $SUPABASE_ORG_ID"
-
-# Create a new Supabase project for the preview
-echo "📦 Creating new Supabase project..."
-RESPONSE=$(curl -s -X POST "$API_URL" \
-  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"name\": \"$INSTANCE_NAME\",
-    \"organization_id\": \"$SUPABASE_ORG_ID\",
-    \"region\": \"us-east-1\",
-    \"plan\": \"free\",
-    \"kps_enabled\": false,
-    \"db_pass\": \"$PREVIEW_DB_PASSWORD\"
-  }" 2>&1)
-
-# Check if project creation was successful
-if echo "$RESPONSE" | grep -q '"error"'; then
-  echo "❌ Error: Failed to create Supabase project"
-  echo "Response: $RESPONSE"
-  exit 1
-fi
-
-if ! echo "$RESPONSE" | grep -q '"id"'; then
-  echo "❌ Error: Invalid response from Supabase API"
-  echo "Response: $RESPONSE"
-  exit 1
-fi
-
-PROJECT_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
-echo "✅ Created Supabase project: $PROJECT_ID"
-
-# Wait for project to be ready
-echo "⏳ Waiting for project to be ready..."
-sleep 30
-
-# Get database connection details
-echo "📋 Fetching database connection details..."
-PROJECT_DETAILS=$(curl -s -X GET "$API_URL/$PROJECT_ID" \
-  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" 2>&1)
-
-if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
-  echo "❌ Error: Failed to fetch project details after creation"
-  echo "Response: $PROJECT_DETAILS"
-  exit 1
-fi
-
-FETCHED_DB_PASSWORD=$(echo "$PROJECT_DETAILS" | grep -o '"db_pass":"[^"]*' | cut -d'"' -f4 || echo "")
 # Extract DB_HOST from nested database.host structure
 # The API returns: "database":{"host":"db.xxx.supabase.co",...}
-# Extract the database object, then extract host from it
 DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
 DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
 DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
 
-if [ -z "$FETCHED_DB_PASSWORD" ]; then
-  FETCHED_DB_PASSWORD="$PREVIEW_DB_PASSWORD"
-fi
-
-if [ -z "$FETCHED_DB_PASSWORD" ] || [ -z "$DB_HOST" ]; then
-  echo "❌ Error: Failed to extract database connection details"
-  echo "DB_PASSWORD: ${FETCHED_DB_PASSWORD:+set}" 
-  echo "DB_HOST: ${DB_HOST:+set}"
+if [ -z "$DB_HOST" ]; then
+  echo "❌ Error: Failed to extract database host from project details"
+  echo "Please verify SUPABASE_PROJECT_REF is correct and SUPABASE_ACCESS_TOKEN has proper permissions"
   echo "Response: $PROJECT_DETAILS"
   exit 1
 fi
 
-# Supabase requires SSL connections
-DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${FETCHED_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+echo "✅ Found database host: $DB_HOST"
+
+# Construct main database connection string
+# Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require
+MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+
+# Create PostgreSQL schema using Prisma (which handles connection properly)
+echo "📦 Creating PostgreSQL schema: $SCHEMA_NAME"
+
+# Use node with Prisma to create the schema
+# We'll use a temporary script to execute the schema creation
+TEMP_SCRIPT=$(mktemp)
+cat > "$TEMP_SCRIPT" << 'EOF'
+const { PrismaClient } = require('@prisma/client');
+
+const prisma = new PrismaClient({
+  log: ['error'],
+});
+
+async function createSchema() {
+  const schemaName = process.env.SCHEMA_NAME;
+  if (!schemaName) {
+    console.error('❌ Error: SCHEMA_NAME environment variable is not set');
+    process.exit(1);
+  }
+
+  try {
+    // Create schema using raw SQL
+    // PostgreSQL identifiers need to be quoted if they contain special characters
+    // But our schema name is sanitized, so we can use it directly
+    await prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+    console.log(`✅ Schema created successfully: ${schemaName}`);
+    await prisma.$disconnect();
+    process.exit(0);
+  } catch (error) {
+    console.error(`❌ Error creating schema: ${error.message}`);
+    if (error.code) {
+      console.error(`   Error code: ${error.code}`);
+    }
+    await prisma.$disconnect().catch(() => {});
+    process.exit(1);
+  }
+}
+
+createSchema();
+EOF
+
+# Run the schema creation script
+export DATABASE_URL="$MAIN_DATABASE_URL"
+export SCHEMA_NAME="$SCHEMA_NAME"
+if ! node "$TEMP_SCRIPT"; then
+  echo "❌ Error: Failed to create schema"
+  rm -f "$TEMP_SCRIPT"
+  exit 1
+fi
+
+rm -f "$TEMP_SCRIPT"
+
+# Construct preview database connection string with search_path
+# Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:5432/[DB_NAME]?sslmode=require&search_path=preview_pr7
+DATABASE_URL="${MAIN_DATABASE_URL}&search_path=${SCHEMA_NAME}"
 
 # Always set outputs (even if empty, to prevent workflow failures)
 {
   echo "database-url=$DATABASE_URL"
   echo "instance-name=$INSTANCE_NAME"
-  echo "project-id=$PROJECT_ID"
+  echo "schema-name=$SCHEMA_NAME"
 } >> "$GITHUB_OUTPUT"
 
-echo "✅ Preview instance created successfully"
-echo "DATABASE_URL format: postgresql://postgres.***:***@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+echo "✅ Preview schema created successfully"
+echo "Schema: $SCHEMA_NAME"
+echo "DATABASE_URL format: postgresql://postgres.***:***@${DB_HOST}:5432/${DB_NAME}?sslmode=require&search_path=${SCHEMA_NAME}"
 exit 0
 
