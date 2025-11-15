@@ -71,16 +71,18 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
   exit 1
 fi
 
-# Extract DB_HOST and DB_NAME using jq (proper JSON parsing)
-# Try to extract from API response, fallback to constructed value
+# Always construct DB_HOST from project ref (standard Supabase format)
+# Supabase Transaction Mode hosts are ALWAYS: db.[PROJECT-REF].supabase.co
+# This format is standardized and doesn't need to be extracted from the API
+DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
+echo "✅ Using database host: $DB_HOST (constructed from project ref)"
+
+# Extract DB_NAME from API response (optional, defaults to postgres)
+# This is just for informational purposes, we always use "postgres" as the database name
 if command -v jq >/dev/null 2>&1; then
-  # Use jq to properly parse JSON response
-  DB_HOST=$(echo "$PROJECT_DETAILS" | jq -r '.database.host // .db_host // empty' 2>/dev/null || echo "")
   DB_NAME=$(echo "$PROJECT_DETAILS" | jq -r '.database.db_name // .db_name // .database_name // "postgres"' 2>/dev/null || echo "postgres")
 else
   # Fallback to grep if jq is not available (shouldn't happen in GitHub Actions)
-  DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
-  DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
   DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "")
   if [ -z "$DB_NAME" ]; then
     DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"database_name":"[^"]*' | cut -d'"' -f4 || echo "")
@@ -88,20 +90,10 @@ else
 fi
 
 # Default to "postgres" if DB_NAME is still empty
-if [ -z "$DB_NAME" ]; then
+if [ -z "$DB_NAME" ] || [ "$DB_NAME" = "null" ]; then
   DB_NAME="postgres"
-  echo "⚠️  Could not extract DB_NAME from API response, defaulting to 'postgres'"
 fi
 echo "✅ Using database name: $DB_NAME"
-
-# If host extraction failed, construct it from project ref (standard Supabase format)
-# Supabase hosts are always: db.[PROJECT-REF].supabase.co
-if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ] || [ "$DB_HOST" = "" ]; then
-  DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
-  echo "⚠️  Could not extract DB_HOST from API response, constructing from project ref: $DB_HOST"
-else
-  echo "✅ Found database host from API: $DB_HOST"
-fi
 
 # Construct main database connection string
 # Supabase Transaction Mode Pooling format (required for external IPs): postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true
