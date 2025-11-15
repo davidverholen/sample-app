@@ -41,9 +41,17 @@ async function createSchema() {
     process.exit(1)
   }
 
-  // Parse connection string to extract hostname
+  // Parse connection string to extract components
   const urlObj = new URL(databaseUrl)
   const hostname = urlObj.hostname
+  const port = parseInt(urlObj.port || '6543', 10)
+  const database = urlObj.pathname.replace('/', '') || 'postgres'
+  const username = urlObj.username || 'postgres'
+  const password = urlObj.password
+
+  // Extract search params
+  const searchParams = urlObj.searchParams
+  const sslMode = searchParams.get('sslmode') || 'require'
 
   // CRITICAL: Resolve hostname to IPv4 address explicitly
   // GitHub Actions runners may not have IPv6 connectivity
@@ -56,42 +64,44 @@ async function createSchema() {
     const { address } = await dns.lookup(hostname, { family: 4 })
     resolvedHost = address
     console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
-    // Replace hostname with IPv4 address in connection string
-    urlObj.hostname = resolvedHost
-    databaseUrl = urlObj.toString()
   } catch (resolveError) {
     console.warn(`⚠️  DNS resolution failed: ${resolveError.message}`)
-    console.warn(`   Using hostname as-is (may fail if IPv6 is not available)`)
-    console.warn(`   Error details: ${resolveError.code || 'unknown'}`)
+    console.warn(`   Error code: ${resolveError.code || 'unknown'}`)
+    console.warn(`   Will try connecting with hostname (may fail if IPv6 not available)`)
+    // Keep original hostname if resolution fails
   }
 
-  // Create pg Client with explicit connection string
+  // Create pg Client with explicit options instead of connection string
+  // This gives us more control over the connection, especially for IPv4/IPv6
   // pg handles Transaction Mode (port 6543) connections better than Prisma
   const client = new Client({
-    connectionString: databaseUrl,
+    host: resolvedHost, // Use resolved IPv4 address or original hostname
+    port: port,
+    database: database,
+    user: username,
+    password: password,
     // Force IPv4 to avoid ENETUNREACH errors on GitHub Actions
     // GitHub Actions runners may not have IPv6 connectivity
-    family: 4, // Use IPv4 only (backup in case DNS resolution didn't work)
+    family: 4, // Use IPv4 only - this prevents pg from trying IPv6
+    // SSL configuration
+    ssl: sslMode === 'require' || sslMode === 'prefer' ? { rejectUnauthorized: false } : false,
     // Disable prepared statements for Transaction Mode
     // Transaction Mode (port 6543) doesn't support prepared statements
     statement_timeout: 30000, // 30 seconds
     query_timeout: 30000,
   })
 
-  // Debug: Log the actual connection string components (without password)
-  // Note: urlObj was already created above for DNS resolution
+  // Debug: Log the actual connection details (without password)
   console.log(`🔍 Connection details:`)
-  console.log(`   Protocol: ${urlObj.protocol}`)
   console.log(
-    `   Host: ${urlObj.hostname}${resolvedHost !== hostname ? ` (resolved from ${hostname})` : ''}`
+    `   Host: ${resolvedHost}${resolvedHost !== hostname ? ` (resolved from ${hostname})` : ''}`
   )
-  console.log(`   Port: ${urlObj.port}`)
-  console.log(`   Database: ${urlObj.pathname.replace('/', '')}`)
-  console.log(`   Search params: ${urlObj.search}`)
+  console.log(`   Port: ${port}`)
+  console.log(`   Database: ${database}`)
+  console.log(`   User: ${username}`)
+  console.log(`   SSL: ${sslMode}`)
+  console.log(`   Family: 4 (IPv4 only)`)
 
-  // Log connection info (without password)
-  const safeUrl = databaseUrl.replace(/:[^:@]+@/, ':***@')
-  console.log(`🔍 Connecting to database: ${safeUrl}`)
   console.log(`📦 Creating schema: ${schemaName}`)
 
   try {
@@ -150,14 +160,20 @@ async function createSchema() {
     if (
       error.message.includes("Can't reach database server") ||
       error.message.includes('ENOTFOUND') ||
-      error.message.includes('ECONNREFUSED')
+      error.message.includes('ECONNREFUSED') ||
+      error.message.includes('ENETUNREACH')
     ) {
       console.error('')
       console.error('💡 This error typically indicates:')
       console.error('   1. Database host is incorrect or unreachable')
       console.error('   2. Network connectivity issues (firewall blocking)')
-      console.error('   3. DNS resolution failure')
+      console.error('   3. DNS resolution failure or IPv6 connectivity issue')
       console.error('   4. Supabase project might not allow connections from this IP')
+      if (error.message.includes('ENETUNREACH')) {
+        console.error('   5. IPv6 connectivity issue - GitHub Actions may not support IPv6')
+        console.error('      The script attempts to resolve to IPv4, but if that fails,')
+        console.error('      it may fall back to IPv6 which is not available.')
+      }
       console.error('')
       console.error('🔧 Troubleshooting:')
       console.error(
