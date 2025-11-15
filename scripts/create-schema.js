@@ -54,9 +54,18 @@ async function createSchema() {
   const searchParams = urlObj.searchParams
   const sslMode = searchParams.get('sslmode') || 'require'
 
+  // Validate hostname format (Supabase format: db.[PROJECT-REF].supabase.co)
+  if (!hostname || !hostname.match(/^db\.[a-z0-9-]+\.supabase\.co$/i)) {
+    console.error(`❌ Error: Invalid hostname format: ${hostname}`)
+    console.error('   Expected format: db.[PROJECT-REF].supabase.co')
+    console.error('   This suggests SUPABASE_PROJECT_REF may be incorrect')
+    process.exit(1)
+  }
+
   // CRITICAL: Resolve hostname to IPv4 address explicitly
   // GitHub Actions runners may not have IPv6 connectivity
   // Supabase resolves to both IPv4 and IPv6, but we need IPv4
+  // If DNS resolution fails, we MUST fail immediately - don't try hostname (will get IPv6)
   let resolvedHost = hostname
   try {
     console.log(`🔍 Resolving hostname to IPv4: ${hostname}`)
@@ -66,10 +75,28 @@ async function createSchema() {
     resolvedHost = address
     console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
   } catch (resolveError) {
-    console.warn(`⚠️  DNS resolution failed: ${resolveError.message}`)
-    console.warn(`   Error code: ${resolveError.code || 'unknown'}`)
-    console.warn(`   Will try connecting with hostname (may fail if IPv6 not available)`)
-    // Keep original hostname if resolution fails
+    console.error(`❌ DNS resolution failed: ${resolveError.message}`)
+    console.error(`   Error code: ${resolveError.code || 'unknown'}`)
+    console.error(`   Hostname: ${hostname}`)
+    console.error('')
+    console.error('💡 This error indicates one of the following:')
+    console.error('   1. Hostname format is incorrect')
+    console.error('      Expected format: db.[PROJECT-REF].supabase.co')
+    console.error(`      Actual hostname: ${hostname}`)
+    console.error('   2. SUPABASE_PROJECT_REF secret is incorrect')
+    console.error('   3. Network/DNS issue in GitHub Actions')
+    console.error('   4. Supabase project may not exist or be accessible')
+    console.error('')
+    console.error('🔧 Troubleshooting:')
+    console.error('   1. Verify SUPABASE_PROJECT_REF in GitHub secrets')
+    console.error(
+      '   2. Check project reference in Supabase Dashboard → Project Settings → General'
+    )
+    console.error('   3. Verify project is active (not paused)')
+    console.error('   4. Check Supabase status page for service issues')
+    console.error('')
+    console.error('❌ Cannot proceed without DNS resolution - connection will fail with IPv6')
+    process.exit(1)
   }
 
   // Create pg Client with explicit options instead of connection string
