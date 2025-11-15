@@ -44,15 +44,17 @@ Configure the following rules for the `main` branch:
 
 - ✅ **Require status checks to pass before merging**
 - ✅ **Required status checks**:
-  - `lint` (from CI workflow)
-  - `type-check` (from CI workflow)
-  - `test` (from CI workflow)
-  - `build` (from CI workflow)
-  - `e2e` (from CI workflow)
-  - `security` (from CI workflow)
-  - `commit-message` (from CI workflow)
-  - `pr-checks` (from CI workflow)
+  - `Lint` (from CI workflow)
+  - `Type Check` (from CI workflow)
+  - `Test` (from CI workflow)
+  - `Build` (from CI workflow)
+  - `E2E Tests` (from CI workflow)
+  - `Security Scan` (from CI workflow)
+  - `Validate Commit Messages` (from CI workflow)
+  - `PR Checks` (from CI workflow)
 - ✅ **Require branches to be up to date before merging**
+
+**Important**: GitHub status check context names use the job's `name:` field from the workflow file, NOT `workflow-name / job-name`. To find the correct status check names, check a PR's "Checks" tab or use: `gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[].name'`. Use those exact names (case-sensitive) in branch protection settings.
 
 #### 3. Require Conversation Resolution
 
@@ -95,11 +97,13 @@ Configure similar rules for `develop`, but slightly less strict:
 
 - ✅ **Require status checks to pass before merging**
 - ✅ **Required status checks**:
-  - `lint`
-  - `type-check`
-  - `test`
-  - `build`
+  - `Lint`
+  - `Type Check`
+  - `Test`
+  - `Build`
 - ✅ **Require branches to be up to date before merging**
+
+**Important**: GitHub status check context names use the job's `name:` field from the workflow file. Check the workflow file (`.github/workflows/ci.yml`) for the `name:` field of each job, or view a PR's checks tab to see the exact names. Use those exact names (case-sensitive) in branch protection settings.
 
 #### 3. Restrict Pushes
 
@@ -109,24 +113,109 @@ Configure similar rules for `develop`, but slightly less strict:
 
 ## Setup Instructions
 
-### Step 1: Navigate to Branch Protection Settings
+You can configure branch protection either via the GitHub UI or using the GitHub CLI (`gh`). Both methods are described below.
+
+### Method 1: Using GitHub CLI (Recommended)
+
+The GitHub CLI provides a programmatic way to configure branch protection, which is especially useful for updating status check names.
+
+#### Prerequisites
+
+```bash
+# Install GitHub CLI (if not already installed)
+# Linux: sudo apt install gh
+# macOS: brew install gh
+
+# Authenticate
+gh auth login
+```
+
+#### Update Branch Protection Status Checks
+
+**For `main` branch:**
+
+```bash
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "Lint",
+    "Type Check",
+    "Test",
+    "Build",
+    "E2E Tests",
+    "Security Scan",
+    "Validate Commit Messages",
+    "PR Checks"
+  ]
+}
+EOF
+```
+
+**For `develop` branch:**
+
+```bash
+gh api repos/:owner/:repo/branches/develop/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "Lint",
+    "Type Check",
+    "Test",
+    "Build"
+  ]
+}
+EOF
+```
+
+**Verify the update:**
+
+```bash
+# Check main branch protection
+gh api repos/:owner/:repo/branches/main/protection --jq '.required_status_checks.contexts[]'
+
+# Check develop branch protection
+gh api repos/:owner/:repo/branches/develop/protection --jq '.required_status_checks.contexts[]'
+```
+
+For more administrative tasks using `gh` CLI, see [Git Workflow Documentation](./GIT_WORKFLOW.md#using-github-cli-gh-for-administrative-tasks).
+
+### Method 2: Using GitHub UI
+
+#### Step 1: Navigate to Branch Protection Settings
 
 1. Go to your GitHub repository
 2. Click **Settings** → **Branches**
-3. Under **Branch protection rules**, click **Add rule**
+3. Under **Branch protection rules**, click **Add rule** (or edit existing rule)
 
-### Step 2: Configure `main` Branch Protection
+#### Step 2: Configure `main` Branch Protection
 
 1. **Branch name pattern**: `main`
 2. Configure all settings as described above
-3. Click **Create**
+3. **Important**: Under "Required status checks", use the exact job names from the workflow (case-sensitive):
+   - ✅ `Lint` (from job `name: Lint`)
+   - ✅ `Type Check` (from job `name: Type Check`)
+   - ✅ `Test` (from job `name: Test`)
+   - ✅ `Build` (from job `name: Build`)
+   - ✅ `E2E Tests` (from job `name: E2E Tests`)
+   - ✅ `Security Scan` (from job `name: Security Scan`)
+   - ✅ `Validate Commit Messages` (from job `name: Validate Commit Messages`)
+   - ✅ `PR Checks` (from job `name: PR Checks`)
+4. Click **Save** or **Create**
 
-### Step 3: Configure `develop` Branch Protection
+#### Step 3: Configure `develop` Branch Protection
 
-1. Click **Add rule** again
+1. Click **Add rule** again (or edit existing rule)
 2. **Branch name pattern**: `develop`
 3. Configure settings as described above
-4. Click **Create**
+4. **Important**: Under "Required status checks", use the exact job names (case-sensitive):
+   - ✅ `Lint`
+   - ✅ `Type Check`
+   - ✅ `Test`
+   - ✅ `Build`
+5. Click **Save** or **Create**
 
 ### Step 4: Verify Protection
 
@@ -197,6 +286,33 @@ Configure similar rules for `develop`, but slightly less strict:
 1. Check the CI logs to see what failed
 2. Fix the issues locally
 3. Push again (CI will re-run)
+
+### Issue: "Required status checks do not match expected builds"
+
+**Solution**:
+
+This happens when the status check names in branch protection don't match the actual status check names created by GitHub Actions.
+
+1. **Check the actual status check names**:
+   ```bash
+   # View status checks on a PR
+   gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[].name'
+   
+   # Or check via API
+   gh api repos/:owner/:repo/pulls/<number> --jq '.head.sha' | \
+     xargs -I {} gh api repos/:owner/:repo/commits/{}/check-runs --jq '.check_runs[].name'
+   ```
+
+2. **Update branch protection settings**:
+   - Go to **Settings** → **Branches**
+   - Edit your branch protection rule
+   - Under "Required status checks", use the exact job names from the workflow's `name:` field
+   - Status check names are case-sensitive and must match exactly
+
+3. **Verify the status check names match**:
+   - GitHub uses the job's `name:` field as the status check context
+   - Check the workflow file (`.github/workflows/ci.yml`) for the `name:` field of each job
+   - Make sure every required check in branch protection matches exactly what appears in the PR checks tab
 
 ### Issue: "Branch is out of date"
 

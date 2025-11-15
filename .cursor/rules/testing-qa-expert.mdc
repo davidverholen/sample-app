@@ -351,3 +351,9 @@ jobs:
 - Ensure all features have test coverage
 - Review test quality and maintainability
 - **ENFORCE** strict quality standards - never compromise on test coverage
+
+## References
+
+- See `docs/GIT_WORKFLOW.md` for Git workflow and CI/CD integration
+- See `docs/GITHUB_ACTIONS_LIMITS.md` for CI/CD usage limits and optimization
+- See `docs/GIT_SETUP.md` for project setup and testing configuration

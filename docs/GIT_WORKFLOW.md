@@ -561,6 +561,165 @@ For complete protection, configure GitHub branch protection rules:
 
 See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed configuration instructions.
 
+### Using GitHub CLI (gh) for Administrative Tasks
+
+The GitHub CLI (`gh`) provides a powerful command-line interface for managing repository settings and administrative tasks. This is especially useful for:
+
+- Updating branch protection rules
+- Managing repository settings
+- Configuring workflows
+- Managing issues and pull requests programmatically
+
+#### Installation
+
+```bash
+# Linux (Debian/Ubuntu)
+sudo apt install gh
+
+# macOS
+brew install gh
+
+# Or download from: https://cli.github.com/
+```
+
+#### Authentication
+
+```bash
+# Login to GitHub
+gh auth login
+
+# Verify authentication
+gh auth status
+```
+
+#### Common Administrative Tasks
+
+**Update Branch Protection Status Checks**
+
+When status check names change (e.g., after renaming a workflow), update branch protection:
+
+```bash
+# Update main branch protection
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build",
+    "CI / e2e",
+    "CI / security",
+    "CI / commit-message",
+    "CI / pr-checks"
+  ]
+}
+EOF
+
+# Update develop branch protection
+gh api repos/:owner/:repo/branches/develop/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build"
+  ]
+}
+EOF
+```
+
+**View Current Branch Protection Settings**
+
+```bash
+# View main branch protection
+gh api repos/:owner/:repo/branches/main/protection
+
+# View required status checks
+gh api repos/:owner/:repo/branches/main/protection --jq '.required_status_checks.contexts[]'
+```
+
+**Manage Repository Settings**
+
+```bash
+# View repository settings
+gh repo view --json name,description,visibility
+
+# Update repository description
+gh repo edit --description "New description"
+
+# Enable/disable features
+gh repo edit --enable-issues
+gh repo edit --enable-wiki
+```
+
+**Manage Branch Protection Rules**
+
+```bash
+# List all branch protection rules
+gh api repos/:owner/:repo/branches --jq '.[].name'
+
+# Get specific branch protection details
+gh api repos/:owner/:repo/branches/main/protection
+
+# Update pull request review requirements
+gh api repos/:owner/:repo/branches/main/protection/required_pull_request_reviews \
+  -X PATCH -f required_approving_review_count=0 \
+  -f dismiss_stale_reviews=false
+```
+
+**Workflow Management**
+
+```bash
+# List workflows
+gh workflow list
+
+# View workflow runs
+gh run list
+
+# View specific workflow run
+gh run view <run-id>
+
+# Rerun a failed workflow
+gh run rerun <run-id>
+```
+
+**Issue and PR Management**
+
+```bash
+# List issues
+gh issue list
+
+# Create an issue
+gh issue create --title "Issue title" --body "Issue description"
+
+# List PRs
+gh pr list
+
+# View PR details
+gh pr view <number>
+
+# Merge a PR
+gh pr merge <number> --squash
+```
+
+#### Tips
+
+- Use `:owner/:repo` as a placeholder - `gh` will automatically use the current repository
+- Use `--jq` flag for JSON output filtering (requires `jq` to be installed)
+- Use `--input -` with heredoc syntax for complex JSON payloads
+- Always verify changes with `gh api` GET requests before making PATCH/PUT requests
+
+#### Security Notes
+
+- `gh` uses your GitHub authentication token
+- Ensure you have appropriate repository permissions (admin for branch protection)
+- Review changes carefully before applying them
+- Consider testing on a non-production branch first
+
 ### Enforcement Summary
 
 | Rule                           | Local Hook    | CI/CD  | GitHub Protection |

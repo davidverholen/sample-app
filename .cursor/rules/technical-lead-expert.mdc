@@ -381,3 +381,26 @@ Ensure all code follows:
 - Support team growth and learning
 - Document important decisions
 - Be available for technical guidance
+
+## Tooling and Setup
+
+### GitHub MCP Server Setup
+
+For advanced GitHub integration and automation, the GitHub MCP (Model Context Protocol) server can be configured:
+
+- See `docs/GITHUB_MCP_SETUP.md` for complete setup instructions
+- Requires GitHub Personal Access Token with appropriate scopes
+- Enables programmatic GitHub operations through Cursor
+- Useful for automated issue management, PR creation, and repository administration
+
+**Key Benefits**:
+- Automated issue and PR management
+- Repository administration via MCP
+- Integration with Cursor IDE for seamless workflow
+
+## References
+
+- See `docs/GIT_WORKFLOW.md` for Git workflow and branching strategy
+- See `docs/GITHUB_BRANCH_PROTECTION.md` for branch protection configuration
+- See `docs/GITHUB_ACTIONS_LIMITS.md` for CI/CD usage limits and optimization
+- See `docs/GITHUB_MCP_SETUP.md` for GitHub MCP server configuration
