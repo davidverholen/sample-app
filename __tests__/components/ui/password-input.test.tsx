@@ -14,12 +14,12 @@ describe('PasswordInput', () => {
   it('toggles password visibility when button is clicked', async () => {
     const user = userEvent.setup()
     render(<PasswordInput />)
-    
+
     const input = document.querySelector('input') as HTMLInputElement
     const toggleButton = screen.getByRole('button', { name: /show password/i })
 
     expect(input).toHaveAttribute('type', 'password')
-    
+
     await user.click(toggleButton)
     expect(input).toHaveAttribute('type', 'text')
     expect(screen.getByRole('button', { name: /hide password/i })).toBeInTheDocument()
@@ -34,10 +34,10 @@ describe('PasswordInput', () => {
   it('shows eye-off icon when password is visible', async () => {
     const user = userEvent.setup()
     render(<PasswordInput />)
-    
+
     const toggleButton = screen.getByRole('button', { name: /show password/i })
     await user.click(toggleButton)
-    
+
     expect(screen.getByRole('button', { name: /hide password/i })).toBeInTheDocument()
   })
 
@@ -58,4 +58,3 @@ describe('PasswordInput', () => {
     expect(screen.getByText('Password is required')).toBeInTheDocument()
   })
 })
-

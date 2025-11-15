@@ -20,7 +20,7 @@ describe('ThemeProvider', () => {
     localStorage.clear()
     // Reset document classes
     document.documentElement.classList.remove('light', 'dark')
-    
+
     // Mock matchMedia
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -74,7 +74,7 @@ describe('ThemeProvider', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /set dark/i }))
-    
+
     await waitFor(() => {
       expect(screen.getByTestId('current-theme')).toHaveTextContent('dark')
     })
@@ -89,7 +89,7 @@ describe('ThemeProvider', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /set light/i }))
-    
+
     await waitFor(() => {
       expect(localStorage.getItem('theme')).toBe('light')
     })
@@ -99,7 +99,7 @@ describe('ThemeProvider', () => {
     // This test verifies that useTheme throws an error when used outside provider
     // React will catch and handle the error, so we just verify the component doesn't work
     const { container } = render(<TestComponent />)
-    
+
     // The component should not render properly without the provider
     // The error is caught by React's error boundary, so we verify the component state
     // In a real scenario, this would show an error boundary UI
@@ -118,4 +118,3 @@ describe('ThemeProvider', () => {
     })
   })
 })
-

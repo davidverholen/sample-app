@@ -96,9 +96,12 @@ describe('Button', () => {
   })
 
   it('passes through other HTML attributes', () => {
-    render(<Button data-testid="test-button" aria-label="Test button">Button</Button>)
+    render(
+      <Button data-testid="test-button" aria-label="Test button">
+        Button
+      </Button>
+    )
     const button = screen.getByTestId('test-button')
     expect(button).toHaveAttribute('aria-label', 'Test button')
   })
 })
-

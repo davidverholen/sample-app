@@ -88,4 +88,3 @@ describe('Auth utilities', () => {
     })
   })
 })
-

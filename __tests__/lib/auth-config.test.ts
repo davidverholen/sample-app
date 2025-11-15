@@ -9,4 +9,3 @@ describe('Auth Config', () => {
     expect(true).toBe(true)
   })
 })
-

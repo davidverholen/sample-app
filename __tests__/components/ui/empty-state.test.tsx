@@ -60,4 +60,3 @@ describe('EmptyState', () => {
     expect(container).toHaveClass('custom-class')
   })
 })
-

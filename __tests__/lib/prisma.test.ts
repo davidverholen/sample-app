@@ -13,4 +13,3 @@ describe('Prisma Client', () => {
     expect(typeof prismaModule.prisma).toBe('object')
   })
 })
-

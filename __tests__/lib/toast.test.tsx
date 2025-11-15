@@ -11,9 +11,7 @@ function TestComponent() {
       <button onClick={() => showToast('Test Title', 'Test Description', 'success')}>
         Show Toast
       </button>
-      <button onClick={() => showToast('Error Title', undefined, 'error')}>
-        Show Error
-      </button>
+      <button onClick={() => showToast('Error Title', undefined, 'error')}>Show Error</button>
     </div>
   )
 }
@@ -113,4 +111,3 @@ describe('Toast utilities', () => {
     })
   })
 })
-

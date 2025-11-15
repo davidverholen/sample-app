@@ -88,4 +88,3 @@ describe('MobileNav', () => {
     expect(document.body.style.overflow).toBe('')
   })
 })
-

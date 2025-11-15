@@ -7,7 +7,7 @@ describe('ThemeToggle', () => {
   beforeEach(() => {
     localStorage.clear()
     document.documentElement.classList.remove('light', 'dark')
-    
+
     // Mock matchMedia
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -73,4 +73,3 @@ describe('ThemeToggle', () => {
     expect(button).toHaveAttribute('aria-label', 'Toggle theme')
   })
 })
-

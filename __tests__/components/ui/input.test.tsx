@@ -112,4 +112,3 @@ describe('Input', () => {
     expect(input).toHaveAttribute('placeholder', 'Enter text')
   })
 })
-

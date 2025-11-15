@@ -44,10 +44,10 @@ describe('LogoutButton', () => {
     render(<LogoutButton />)
 
     await user.click(screen.getByRole('button', { name: /sign out/i }))
-    
+
     // Wait for async operations
     await new Promise((resolve) => setTimeout(resolve, 0))
-    
+
     expect(mockPush).toHaveBeenCalledWith('/login')
     expect(mockRefresh).toHaveBeenCalled()
   })
@@ -58,4 +58,3 @@ describe('LogoutButton', () => {
     expect(button).toHaveClass('border')
   })
 })
-

@@ -66,7 +66,7 @@ describe('CodeBlock', () => {
   it('copies code to clipboard when copy button is clicked', async () => {
     const user = userEvent.setup({ delay: null })
     const writeTextMock = jest.fn().mockResolvedValue(undefined)
-    
+
     // Mock navigator.clipboard properly
     Object.defineProperty(navigator, 'clipboard', {
       value: {
@@ -146,4 +146,3 @@ describe('CodeBlock', () => {
     expect(screen.getByRole('region')).toBeInTheDocument()
   })
 })
-
