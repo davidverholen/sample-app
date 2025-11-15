@@ -89,18 +89,35 @@ jobs:
           npx prisma generate
           npx prisma db push
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
         run: npm test -- --coverage
 
+      - name: Check coverage thresholds
+        run: |
+          if [ ! -f coverage/lcov.info ]; then
+            echo "❌ Coverage file not found!"
+            exit 1
+          fi
+          echo "✅ Coverage report generated successfully"
+
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
 
   build:
     name: Build
@@ -123,8 +140,16 @@ jobs:
 
       - name: Build application
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/test_db' }}
         run: npm run build
+
+      - name: Check build artifacts
+        run: |
+          if [ ! -d ".next" ]; then
+            echo "❌ Build failed - .next directory not found"
+            exit 1
+          fi
+          echo "✅ Build completed successfully"
 
   e2e:
     name: E2E Tests
@@ -172,16 +197,51 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           NEXTAUTH_URL: http://localhost:3000
-          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_SECRET: test-secret-for-ci
         run: npm run test:e2e
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+      - name: Upload test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-videos
+          path: test-results/
+          retention-days: 7
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate || true
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
+          extra_args: --only-verified
 
   commit-message:
     name: Validate Commit Messages
@@ -231,7 +291,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check PR title format
+      - name: Validate PR title format
         uses: amannn/action-semantic-pull-request@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -248,16 +308,116 @@ jobs:
             ci
             chore
             revert
+          scopes: |
+            auth
+            api
+            ui
+            db
+            config
+            deps
+          requireScope: false
 
-      - name: Comment PR
+      - name: Validate branch naming
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          
+          # Check for release branches (format: release/v1.2.3)
+          if [[ "$BRANCH_NAME" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "✅ Branch name '$BRANCH_NAME' follows the release format"
+            exit 0
+          fi
+          
+          # Check for feature/bugfix/hotfix branches (format: type/issue-number-description)
+          if [[ "$BRANCH_NAME" =~ ^(feature|bugfix|hotfix)/[0-9]+-.*$ ]]; then
+            echo "✅ Branch name '$BRANCH_NAME' follows the required format"
+            exit 0
+          fi
+          
+          # If we get here, the branch name is invalid
+          echo "❌ Branch name '$BRANCH_NAME' does not follow the required format!"
+          echo ""
+          echo "Branch names must follow one of these patterns:"
+          echo "  - <type>/<issue-number>-<description> (for feature, bugfix, hotfix)"
+          echo "  - release/v<version> (for releases, e.g., release/v1.2.3)"
+          echo ""
+          echo "Valid types: feature, bugfix, hotfix, release"
+          echo "Examples:"
+          echo "  ✅ feature/123-user-authentication"
+          echo "  ✅ bugfix/456-login-error"
+          echo "  ✅ hotfix/789-security-patch"
+          echo "  ✅ release/v1.2.3"
+          echo "  ✅ release/v1.2.3-rc.1"
+          echo ""
+          echo "Current branch: $BRANCH_NAME"
+          exit 1
+
+      - name: Comment PR on failure
         if: failure()
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
+            const failures = [];
+            
+            // Check if PR title validation failed
+            if ('${{ job.status }}' === 'failure') {
+              failures.push('⚠️ PR title does not follow the Conventional Commits format. Please update it to: `<type>(<scope>): <subject>`');
+            }
+            
+            // Check if branch naming failed
+            if (failures.length > 0) {
+              const body = `## ❌ PR Validation Failed\n\n${failures.join('\n\n')}\n\nPlease fix the issues above and push again.`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [lint, type-check, test, build, e2e, security, commit-message, pr-checks]
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Generate PR summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = {
+              'lint': '${{ needs.lint.result }}',
+              'type-check': '${{ needs.type-check.result }}',
+              'test': '${{ needs.test.result }}',
+              'build': '${{ needs.build.result }}',
+              'e2e': '${{ needs.e2e.result }}',
+              'security': '${{ needs.security.result }}',
+              'commit-message': '${{ needs.commit-message.result }}',
+              'pr-checks': '${{ needs.pr-checks.result }}'
+            };
+            
+            // Create summary
+            const allPassed = Object.values(jobs).every(status => status === 'success');
+            const emoji = allPassed ? '✅' : '⚠️';
+            const status = allPassed ? 'All checks passed!' : 'Some checks failed';
+            
+            let body = `## ${emoji} CI Checks Summary: ${status}\n\n`;
+            body += '| Check | Status |\n';
+            body += '|-------|--------|\n';
+            
+            for (const [job, status] of Object.entries(jobs)) {
+              const statusEmoji = status === 'success' ? '✅' : status === 'failure' ? '❌' : status === 'skipped' ? '⏭️' : '⏳';
+              body += `| ${job} | ${statusEmoji} ${status} |\n`;
+            }
+            
+            body += '\n---\n';
+            body += '**Note**: This is an automated summary. Check the [Actions tab](https://github.com/${{ github.repository }}/actions) for detailed logs.\n';
+            
+            // Post comment
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '⚠️ PR title does not follow the Conventional Commits format. Please update it to: `<type>(<scope>): <subject>`'
-            })
+              body: body
+            });
 

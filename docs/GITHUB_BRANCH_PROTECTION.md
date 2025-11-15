@@ -27,6 +27,7 @@ Configure the following rules for the `main` branch:
   - `test` (from CI workflow)
   - `build` (from CI workflow)
   - `e2e` (from CI workflow)
+  - `security` (from CI workflow)
   - `commit-message` (from CI workflow)
   - `pr-checks` (from CI workflow)
 - ✅ **Require branches to be up to date before merging**
