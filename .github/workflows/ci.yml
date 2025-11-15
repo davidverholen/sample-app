@@ -9,6 +9,11 @@ on:
 env:
   NODE_VERSION: '20.x'
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 jobs:
   lint:
     name: Lint
@@ -281,6 +286,8 @@ jobs:
             db
             config
             deps
+            workflows
+            ci
           requireScope: false
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
@@ -319,6 +326,8 @@ jobs:
             db
             config
             deps
+            workflows
+            ci
           requireScope: false
 
       - name: Validate branch naming
