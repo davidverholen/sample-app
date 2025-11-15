@@ -18,6 +18,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,6 +41,7 @@ jobs:
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,6 +61,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:15
@@ -109,6 +112,7 @@ jobs:
           echo "✅ Coverage report generated successfully"
 
       - name: Upload coverage to Codecov
+        if: secrets.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage/lcov.info
@@ -116,6 +120,8 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
+        timeout-minutes: 2
 
       - name: Upload coverage reports
         if: always()
@@ -128,6 +134,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:15
@@ -182,6 +189,9 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # E2E tests are slower - make them optional for faster CI
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     services:
       postgres:
         image: postgres:15
@@ -211,7 +221,8 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
 
       - name: Setup database
         env:
@@ -248,6 +259,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -267,6 +279,7 @@ jobs:
       - name: Check for secrets
         uses: trufflesecurity/trufflehog@main
         continue-on-error: true
+        timeout-minutes: 5
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}
@@ -276,6 +289,7 @@ jobs:
   commit-message:
     name: Validate Commit Messages
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -318,6 +332,7 @@ jobs:
   pr-checks:
     name: PR Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -412,6 +427,7 @@ jobs:
   pr-summary:
     name: PR Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     needs: [lint, type-check, test, build, e2e, security, commit-message, pr-checks]
     if: always() && github.event_name == 'pull_request'
     steps:

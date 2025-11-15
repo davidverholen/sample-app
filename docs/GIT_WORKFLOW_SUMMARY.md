@@ -55,9 +55,7 @@ This document provides a quick reference for the Git workflow implementation in 
   - Version tagging
 
 - **Security Workflow**: `.github/workflows/security.yml`
-  - Dependency review
-  - Security audit
-  - CodeQL analysis
+  - Security audit (npm audit - free for all repos)
 
 - **Staging Deployment**: `.github/workflows/deploy-staging.yml`
   - Auto-deploy develop branch to staging
