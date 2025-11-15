@@ -132,9 +132,10 @@ if [ -n "$SUPABASE_PROJECT_REF" ]; then
   
   # Output connection string
   # Note: Schema will be created during migration step
-  # Supabase requires SSL connections and uses connection pooling
+  # Supabase requires SSL connections
+  # Use direct connection (not pooler) for migrations
   # Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?sslmode=require
-  DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require&pgbouncer=true"
+  DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
   
   {
     echo "database-url=$DATABASE_URL"
