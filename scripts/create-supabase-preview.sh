@@ -71,31 +71,37 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
   exit 1
 fi
 
-# Extract DB_HOST from nested database.host structure
-# The API returns: "database":{"host":"db.xxx.supabase.co",...}
-DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
-DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
-# Extract DB_NAME - try multiple patterns as API format may vary
-DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "")
-if [ -z "$DB_NAME" ]; then
-  # Try alternative pattern
-  DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"database_name":"[^"]*' | cut -d'"' -f4 || echo "")
+# Extract DB_HOST and DB_NAME using jq (proper JSON parsing)
+# Try to extract from API response, fallback to constructed value
+if command -v jq >/dev/null 2>&1; then
+  # Use jq to properly parse JSON response
+  DB_HOST=$(echo "$PROJECT_DETAILS" | jq -r '.database.host // .db_host // empty' 2>/dev/null || echo "")
+  DB_NAME=$(echo "$PROJECT_DETAILS" | jq -r '.database.db_name // .db_name // .database_name // "postgres"' 2>/dev/null || echo "postgres")
+else
+  # Fallback to grep if jq is not available (shouldn't happen in GitHub Actions)
+  DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
+  DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
+  DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "")
+  if [ -z "$DB_NAME" ]; then
+    DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"database_name":"[^"]*' | cut -d'"' -f4 || echo "")
+  fi
 fi
-# Default to "postgres" if still empty
+
+# Default to "postgres" if DB_NAME is still empty
 if [ -z "$DB_NAME" ]; then
   DB_NAME="postgres"
   echo "⚠️  Could not extract DB_NAME from API response, defaulting to 'postgres'"
 fi
 echo "✅ Using database name: $DB_NAME"
 
-if [ -z "$DB_HOST" ]; then
-  echo "❌ Error: Failed to extract database host from project details"
-  echo "Please verify SUPABASE_PROJECT_REF is correct and SUPABASE_ACCESS_TOKEN has proper permissions"
-  echo "Response: $PROJECT_DETAILS"
-  exit 1
+# If host extraction failed, construct it from project ref (standard Supabase format)
+# Supabase hosts are always: db.[PROJECT-REF].supabase.co
+if [ -z "$DB_HOST" ] || [ "$DB_HOST" = "null" ] || [ "$DB_HOST" = "" ]; then
+  DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
+  echo "⚠️  Could not extract DB_HOST from API response, constructing from project ref: $DB_HOST"
+else
+  echo "✅ Found database host from API: $DB_HOST"
 fi
-
-echo "✅ Found database host: $DB_HOST"
 
 # Construct main database connection string
 # Supabase Transaction Mode Pooling format (required for external IPs): postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true
