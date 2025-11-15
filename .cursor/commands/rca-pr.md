@@ -4,16 +4,16 @@ Perform a comprehensive root cause analysis (RCA) of failures in the current ope
 
 ## CRITICAL: RCA Process
 
-**MANDATORY**: Follow a systematic investigation approach. Document all findings and post them to GitHub (PR comment or issue). Do NOT implement fixes - only investigate and document.
+**MANDATORY**: Follow a systematic investigation approach. Document all findings and post them directly to the PR as a comment. Do NOT create local files. Do NOT implement fixes - only investigate and document.
 
 ## Output Location
 
-RCA findings are posted to:
+**RCA findings MUST be posted directly to the PR as a comment** - do not create local files in `docs/rca/`.
 
-- **PR Comment** (default) - For PR-specific issues that will be fixed in the PR
-- **GitHub Issue** - For system-wide issues or complex problems requiring separate tracking
+- **PR Comment** (default and required) - Post concise RCA findings directly to the PR
+- **GitHub Issue** - Only for system-wide issues that affect multiple PRs (rare)
 
-See `docs/RCA_PROCESS.md` for guidance on when to use PR comments vs issues.
+**Keep RCA concise and precise** - Focus on root cause, recommended solution, and files requiring changes.
 
 ## Initial Setup
 
@@ -83,76 +83,204 @@ gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failu
 
 **Goal**: Verify if the connection string format, API usage, or configuration matches requirements.
 
+**MANDATORY**: Read documentation and validate with tools before making assumptions.
+
+**1. Check Codebase Documentation**:
+
+```bash
+# Read relevant documentation files
+find docs/ -name "*.md" -exec grep -l "connection\|database\|api" {} \;
+cat docs/REVIEW_APPS.md
+cat docs/SUPABASE_SETUP.md
+
+# Check agent specs for relevant information
+grep -r "connection.*string\|DATABASE_URL\|API.*format" .cursor/rules/ --include="*.mdc"
+```
+
+**2. Validate with CLI Tools**:
+
 **For Database Issues**:
 
-- Research correct connection string format
-- Check if direct connection vs connection pooling is required
-- Verify port numbers and SSL requirements
-- Check IP allowlisting requirements
+```bash
+# Test connection string format (if possible)
+# Extract connection string from error/logs
+# Test with actual database client
+psql "$CONNECTION_STRING" -c "SELECT 1;" 2>&1
+
+# Check Supabase CLI for connection info
+supabase projects list
+supabase db ping
+
+# Verify against official docs
+# Search web for official documentation
+```
 
 **For API Issues**:
 
-- Verify API endpoint format
-- Check authentication requirements
-- Verify request/response formats
-- Check rate limiting or quota issues
+```bash
+# Test API endpoint with actual call
+curl -v -H "Authorization: Bearer $TOKEN" "$API_URL"
+
+# Check API documentation
+gh api /repos/:owner/:repo --jq '.'
+vercel project ls
+supabase projects list
+```
 
 **For Configuration Issues**:
 
-- Verify environment variable formats
-- Check secret requirements
-- Verify configuration file syntax
+```bash
+# Validate configuration syntax
+node -c config.js 2>&1
+yaml lint config.yml 2>&1
+
+# Check environment variables (without exposing secrets)
+gh secret list
+vercel env ls
+```
+
+**3. Research Official Documentation**:
+
+- Search official documentation for correct formats
+- Compare with what's being used
+- Note any discrepancies
+
+**4. Update Agent Specs if Gap Found**:
+
+- If documentation is missing, add it immediately
+- Include examples, common mistakes, references
+- Continue investigation with updated knowledge
 
 **Document**:
 
-- Expected format/requirements
-- Actual format being used
-- Differences identified
+- Expected format/requirements (from official docs)
+- Actual format being used (from code/logs)
+- Differences identified (validated with tools)
 - Official documentation references
+- Any agent spec updates made
 
 ### Step 3: Analyze Connection/Configuration Construction
 
-**Goal**: Understand how the connection string or configuration is built.
+**Goal**: Understand how the connection string or configuration is built and validate each component.
+
+**1. Read Relevant Files**:
 
 ```bash
 # View relevant script files
 gh pr diff --name-only | grep -E "scripts/|\.config\.|\.env"
 
+# Read the actual files to understand construction
+cat scripts/create-supabase-preview.sh
+cat scripts/create-schema.js
+
 # Check how connection strings are constructed
-grep -r "DATABASE_URL\|connection.*string" scripts/ --include="*.sh" --include="*.js"
+grep -r "DATABASE_URL\|connection.*string" scripts/ --include="*.sh" --include="*.js" -A 5 -B 5
+```
+
+**2. Trace Variable Flow**:
+
+```bash
+# Trace environment variables through the execution
+# Check workflow file for env var passing
+gh pr diff .github/workflows/review-apps.yml | grep -A 10 -B 10 "env:\|DATABASE_URL"
+
+# Check script for variable usage
+grep -n "DATABASE_URL\|ENCODED_PASSWORD\|DB_HOST" scripts/create-supabase-preview.sh
+```
+
+**3. Validate Construction Logic**:
+
+```bash
+# Test password encoding (if applicable)
+node -e "console.log(encodeURIComponent('test@password#123'))"
+
+# Test host extraction (if applicable)
+# Extract from API response and verify format
+curl -H "Authorization: Bearer $TOKEN" "$API_URL" | jq '.database.host'
+
+# Verify each component is constructed correctly
+# Compare with expected format from Step 2
+```
+
+**4. Test Construction Output**:
+
+```bash
+# If possible, run script in dry-run mode or extract constructed value
+# Compare constructed value with expected format
+# Validate against official documentation
 ```
 
 **Document**:
 
-- How the connection string/config is constructed
+- How the connection string/config is constructed (line by line)
 - Source of each component (env vars, API responses, etc.)
-- Any transformations applied
-- Potential issues in construction logic
+- Any transformations applied (encoding, concatenation, etc.)
+- Validation results (what was tested, what passed/failed)
+- Potential issues in construction logic (validated, not assumed)
 
 ### Step 4: Check Network Access and Permissions
 
-**Goal**: Determine if network access, firewall rules, or permissions are blocking the operation.
+**Goal**: Determine if network access, firewall rules, or permissions are blocking the operation. **Validate with tools, don't assume**.
 
-**For Network Issues**:
+**1. Validate Network Access**:
 
-- Check if external IPs are blocked
-- Verify if connection pooling is required vs direct connection
-- Check if IP allowlisting is needed
-- Verify firewall rules
+```bash
+# Test network connectivity (if possible)
+ping db.project.supabase.co
+curl -v https://api.supabase.com/v1/projects
 
-**For Permission Issues**:
+# Check if connection pooling is required
+# Read agent specs for connection requirements
+grep -r "connection.*pool\|port.*6543\|port.*5432" .cursor/rules/ --include="*.mdc"
 
-- Check API token permissions
-- Verify database user permissions
-- Check file system permissions
-- Verify GitHub secrets are set correctly
+# Test connection with different ports/formats
+# Compare Transaction Mode vs Session Mode vs Direct
+```
+
+**2. Validate Permissions**:
+
+```bash
+# Check API token permissions (without exposing token)
+gh auth status
+vercel whoami
+supabase projects list  # Tests access token
+
+# Verify GitHub secrets are set (without exposing values)
+gh secret list | grep -i "supabase\|database\|vercel"
+
+# Check if secrets have correct names
+gh secret list
+```
+
+**3. Validate Configuration**:
+
+```bash
+# Check if IP allowlisting is needed
+# Read Supabase documentation
+# Check agent specs for IP allowlisting requirements
+
+# Verify firewall rules
+# Test connection from different contexts
+# Compare local vs CI/CD behavior
+```
+
+**4. Test Actual Access**:
+
+```bash
+# If possible, test actual connection/permission
+# Use CLI tools to verify access
+supabase db ping
+vercel project ls
+gh api /repos/:owner/:repo
+```
 
 **Document**:
 
-- Network access requirements
-- Permission requirements
-- Current configuration
-- Blocking factors identified
+- Network access requirements (from docs, validated)
+- Permission requirements (from docs, validated)
+- Current configuration (from code/logs, verified)
+- Test results (what was tested, what passed/failed)
+- Blocking factors identified (validated, not assumed)
 
 ### Step 5: Review Script Execution Flow
 
@@ -176,91 +304,89 @@ grep -r "export\|require\|import" scripts/ --include="*.sh" --include="*.js"
 
 ### Step 6: Compare with Working Examples
 
-**Goal**: Compare the failing implementation with known working examples.
+**Goal**: Compare the failing implementation with known working examples. **Validate differences with tools**.
+
+**1. Find Working Examples**:
 
 ```bash
 # Find similar working scripts
 find scripts/ -name "*.sh" -o -name "*.js" | xargs grep -l "connection\|database" | head -5
 
+# Read working examples
+cat scripts/test-db-connection.js
+cat scripts/setup-supabase-schema.sh
+
 # Check documentation examples
-grep -r "example\|working\|test" docs/ --include="*.md" | grep -i "connection\|database"
+grep -r "example\|working\|test" docs/ --include="*.md" | grep -i "connection\|database" -A 10 -B 5
+
+# Check agent specs for examples
+grep -r "example\|format\|connection" .cursor/rules/ --include="*.mdc" -A 5
+```
+
+**2. Compare Formats**:
+
+```bash
+# Extract connection string formats from working examples
+grep -h "postgres://\|postgresql://" scripts/*.sh scripts/*.js docs/*.md
+
+# Compare with failing implementation
+# Identify exact differences (not just "looks different")
+```
+
+**3. Validate Differences**:
+
+```bash
+# Test if working format actually works
+# Test if failing format actually fails
+# Document specific differences that matter
 ```
 
 **Document**:
 
-- Working examples found
-- Differences from working examples
-- Patterns that work vs patterns that fail
+- Working examples found (with file paths)
+- Exact differences from working examples (validated)
+- Patterns that work vs patterns that fail (tested)
+- Why the difference matters (validated with tools/docs)
 
-## RCA Document Structure
+## RCA Comment Structure
 
-Create a comprehensive RCA document with the following structure:
+Create a concise RCA comment with the following structure (keep it short and precise, but include validation evidence):
 
 ```markdown
-# Root Cause Analysis: PR #{PR_NUMBER}
+## 🔍 Root Cause Analysis
 
-## Problem Summary
+### Problem Summary
 
-[Brief description of the failure]
+[Brief description of the failure - 1-2 sentences]
 
-## Investigation Results
+### Root Cause
 
-### 1. Error Details Analysis
+**PRIMARY**: [Clear statement of the root cause - 1-2 sentences]
 
-[Detailed error information]
+**Evidence** (validated with tools/docs):
 
-### 2. Connection/Format Requirements Analysis
+- [Key evidence point 1 - what was tested/validated]
+- [Key evidence point 2 - what was tested/validated]
+- [Reference to official documentation or agent spec]
 
-[Format requirements vs actual usage]
+### Recommended Solution
 
-### 3. Configuration Construction Analysis
+[Solution description with implementation steps - be specific]
+[Include exact format/configuration needed]
 
-[How configuration is built]
+### Files Requiring Changes
 
-### 4. Network Access and Permissions Analysis
+- `path/to/file1` - [reason - what needs to change and why]
+- `path/to/file2` - [reason - what needs to change and why]
 
-[Network and permission requirements]
+### Documentation Updates
 
-### 5. Script Execution Flow Analysis
+[If agent specs were updated, note what was added and where]
 
-[Complete execution flow]
-
-### 6. Comparison with Working Examples
-
-[Working examples vs failing implementation]
-
-## Root Cause Conclusion
-
-**PRIMARY ROOT CAUSE**:
-[Clear statement of the root cause]
-
-**SECONDARY FACTORS**:
-[Contributing factors]
-
-## Recommended Solutions
-
-### Option 1: [Solution Name] (RECOMMENDED)
-
-[Description and rationale]
-
-### Option 2: [Alternative Solution]
-
-[Description and rationale]
-
-## Next Steps
+### Next Steps
 
 1. [Action item 1]
 2. [Action item 2]
-3. [Action item 3]
-
-## Files Requiring Changes
-
-1. `path/to/file1` - [Reason for change]
-2. `path/to/file2` - [Reason for change]
-
-## Investigation Status
-
-✅ **COMPLETE** - Root cause identified: [Summary]
 ```
 
 ## Agent-Specific Investigation Focus
@@ -304,105 +430,178 @@ Create a comprehensive RCA document with the following structure:
 
 ## Investigation Best Practices
 
-1. **Document Everything**: Record all findings, even if they seem unrelated
-2. **Be Systematic**: Follow the investigation steps in order
-3. **Verify Assumptions**: Don't assume - verify each component
-4. **Compare with Working Examples**: Always compare with known working code
-5. **Research Requirements**: Check official documentation for requirements
-6. **Identify Root Cause**: Don't just identify symptoms - find the root cause
-7. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
+1. **Validate Assumptions with Tooling**: Use CLI tools to test assumptions, don't just read code
+2. **Read Documentation First**: Check `docs/` directory and agent specs for relevant information
+3. **Update Agent Specs Immediately**: If knowledge gaps are found, add documentation to agent specs right away
+4. **Be Systematic**: Follow the investigation steps in order
+5. **Verify with CLI Tools**: Test connection strings, API calls, configurations using actual tools
+6. **Compare with Working Examples**: Always compare with known working code
+7. **Research Official Documentation**: Check official documentation for requirements
+8. **Identify Root Cause**: Don't just identify symptoms - find the root cause
+9. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
+
+## Validation and Testing
+
+**CRITICAL**: Always validate assumptions using CLI tools and actual testing, not just code inspection.
+
+### For Database Connection Issues
+
+```bash
+# Test connection string format
+# Extract connection string from script/logs
+CONNECTION_STRING="postgres://postgres:password@db.project.supabase.co:6543/postgres"
+
+# Test with psql (if available)
+psql "$CONNECTION_STRING" -c "SELECT 1;" || echo "Connection failed"
+
+# Test with Prisma (if project has Prisma)
+DATABASE_URL="$CONNECTION_STRING" npx prisma db execute --stdin <<< "SELECT 1;"
+
+# Check Supabase CLI documentation
+supabase --help | grep -i connection
+
+# Verify connection string format against Supabase docs
+# Check agent specs for connection string documentation
+grep -r "connection.*string\|DATABASE_URL" .cursor/rules/ --include="*.mdc"
+```
+
+### For API Issues
+
+```bash
+# Test API endpoint
+curl -H "Authorization: Bearer $TOKEN" "https://api.example.com/endpoint"
+
+# Verify API documentation
+# Check agent specs for API documentation
+grep -r "API\|endpoint\|authentication" .cursor/rules/ --include="*.mdc"
+
+# Test with actual CLI tools (gh, vercel, supabase, etc.)
+gh api /repos/:owner/:repo
+vercel env ls
+supabase projects list
+```
+
+### For Configuration Issues
+
+```bash
+# Validate configuration files
+# Check syntax
+node -c config.js
+yaml lint config.yml
+
+# Test environment variable access
+echo "$ENV_VAR"
+
+# Verify secrets are set (without exposing values)
+gh secret list
+vercel env ls
+```
+
+### For Workflow/CI Issues
+
+```bash
+# Validate workflow syntax
+gh workflow view workflow.yml
+
+# Check workflow runs
+gh run list --limit 5
+
+# View workflow logs
+gh run view $RUN_ID --log
+
+# Test workflow locally (if possible)
+act -l  # List workflows
+```
+
+## Knowledge Gap Protocol
+
+**MANDATORY**: If you identify a knowledge gap during investigation:
+
+1. **Immediately check agent specs** for relevant documentation:
+
+   ```bash
+   # Search agent specs for relevant information
+   grep -r "keyword" .cursor/rules/ --include="*.mdc"
+   ```
+
+2. **If gap exists, add documentation immediately**:
+   - Read official documentation
+   - Add relevant section to appropriate agent spec
+   - Include examples, common mistakes, and references
+   - Update the spec before continuing investigation
+
+3. **Document the gap in RCA**:
+   - Note what was missing
+   - Reference where documentation was added
+
+**Example**: If investigating Supabase connection issues and find agent spec doesn't have connection string formats:
+
+- Search official Supabase docs
+- Add connection string documentation to DevOps Expert spec
+- Add connection string documentation to Database Expert spec
+- Continue investigation with new knowledge
 
 ## Posting RCA Findings
 
-After completing the investigation, post findings to GitHub:
+**MANDATORY**: After completing the investigation, post findings directly to the PR as a comment. Do NOT create local files.
 
-### Decision: PR Comment vs GitHub Issue
-
-**Use PR Comment when:**
-
-- Issue is PR-specific and will be fixed in this PR
-- Investigation is straightforward
-- Fix is clear and can be implemented immediately
-
-**Use GitHub Issue when:**
-
-- Issue affects multiple PRs or the entire system
-- Root cause is complex and requires ongoing investigation
-- Fix requires architectural changes
-- Issue needs separate tracking from the PR
-
-### Post as PR Comment
+### Post as PR Comment (Default and Required)
 
 ```bash
-# Create RCA comment body
-RCA_COMMENT=$(cat << 'EOF'
-## 🔍 Root Cause Analysis
+# Post concise RCA directly to PR
+gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
 
 ### Problem Summary
-[Brief description of the failure]
+[Brief description - 1-2 sentences]
 
 ### Root Cause
-[Clear statement of the root cause]
+**PRIMARY**: [Clear statement - 1-2 sentences]
+
+**Evidence** (validated):
+- [Key evidence point 1 - what was tested/validated]
+- [Key evidence point 2 - what was tested/validated]
+- [Reference to official docs or agent spec]
 
 ### Recommended Solution
-[Solution description with implementation steps]
+[Solution with specific implementation steps and exact formats]
 
 ### Files Requiring Changes
-- `path/to/file1` - [reason]
-- `path/to/file2` - [reason]
+- \`path/to/file1\` - [reason - what needs to change]
+- \`path/to/file2\` - [reason - what needs to change]
+
+### Documentation Updates
+[If agent specs were updated: Added [topic] to [agent spec] - see [section]]
 
 ### Next Steps
 1. [Action item 1]
-2. [Action item 2]
-
----
-*Full investigation details: [Link to issue if created](#)*
-EOF
-)
-
-# Post comment to PR
-gh pr comment $PR_NUMBER --body "$RCA_COMMENT"
+2. [Action item 2]"
 ```
 
-### Create GitHub Issue
+**Keep it concise but precise** - Focus on root cause (validated), solution (with exact formats), and actionable next steps. Include validation evidence, not assumptions.
+
+### Create GitHub Issue (Rare - Only for System-Wide Issues)
+
+Only create a GitHub issue if the problem affects multiple PRs or the entire system:
 
 ```bash
-# Create issue using template
+# Create issue for system-wide problems
 gh issue create \
-  --title "[RCA] PR #${PR_NUMBER}: [Brief description]" \
-  --body-file <(cat << EOF
-## Problem Summary
+  --title "[RCA] System-wide issue: [Brief description]" \
+  --body "## Problem Summary
+[Description affecting multiple PRs]
 
-**PR Number**: #${PR_NUMBER}
-**Failing Job/Check**: [Job name]
-**Error Message**:
-\`\`\`
-[Error message]
-\`\`\`
+## Root Cause
+[Root cause analysis]
 
-[Continue with full RCA document using issue template structure]
-EOF
-) \
-  --label "rca,investigation" \
-  --assignee "@me"
+## Impact
+- Affects PRs: [List]
+- System-wide impact: [Description]
 
-# Get issue number
-ISSUE_NUMBER=$(gh issue list --limit 1 --json number --jq '.[0].number')
+## Recommended Solution
+[Solution]"
 
 # Link issue in PR comment
 gh pr comment $PR_NUMBER --body "RCA documented in issue #${ISSUE_NUMBER}: https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/${ISSUE_NUMBER}"
 ```
 
-### Update Existing Issue
-
-If an issue already exists for this problem:
-
-```bash
-# Add comment to existing issue with RCA findings
-gh issue comment $ISSUE_NUMBER --body "$RCA_FINDINGS"
-
-# Link PR to issue
-gh issue comment $ISSUE_NUMBER --body "Related PR: #${PR_NUMBER}"
-```
-
-The `debug-pr` command will read from the PR comment or GitHub issue to implement fixes.
+**Note**: For PR-specific issues (99% of cases), post directly to PR comment. The `debug-pr` command reads from PR comments to implement fixes.

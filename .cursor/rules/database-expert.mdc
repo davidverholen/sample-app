@@ -282,12 +282,55 @@ model User {
 
 Supabase provides a PostgreSQL database with additional features. When using Supabase, follow these patterns:
 
+### Supabase Connection Strings
+
+**CRITICAL**: Use the correct connection string format based on your connection type. See DevOps Expert specification for complete connection string documentation.
+
+**Transaction Mode Pooling (Port 6543) - RECOMMENDED for CI/CD**:
+```bash
+# For GitHub Actions, serverless functions, transient connections
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require"
+```
+- Username: `postgres` (NO project ref prefix)
+- Protocol: `postgres://` (not `postgresql://`)
+- Does NOT support prepared statements
+
+**Session Mode Pooling (Port 5432)**:
+```bash
+# For persistent applications requiring prepared statements
+DATABASE_URL="postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
+```
+- Username: `postgres.[PROJECT-REF]` (WITH project ref prefix)
+- Host: `aws-0-[REGION].pooler.supabase.com` (different from direct connection)
+
+**Direct Connection (Port 5432) - Local Development Only**:
+```bash
+# Blocked by Supabase firewall for external IPs
+DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?sslmode=require"
+```
+
+**Common Mistakes**:
+- ❌ Using `postgres.[PROJECT-REF]` username with Transaction Mode (port 6543)
+- ❌ Using port 5432 for external IPs without IP allowlisting
+- ❌ Using `postgresql://` protocol with Transaction Mode
+
+**Reference**: See DevOps Expert specification for complete Supabase connection string documentation.
+
 ### Using Prisma with Supabase
 
-**Connection String**:
+**Connection String for CI/CD**:
 ```bash
-# Supabase connection string format
-DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+# Use Transaction Mode for GitHub Actions
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require"
+```
+
+**Prisma Schema Configuration**:
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")  // Transaction Mode (port 6543) for CI/CD
+  directUrl = env("DIRECT_URL")    // Direct connection (port 5432) for migrations
+}
 ```
 
 **Schema Management**:
@@ -301,6 +344,8 @@ DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co
 - Use Prisma for application queries
 - Keep migrations in sync between Supabase and Prisma
 - Generate TypeScript types from Supabase schema regularly
+- Use Transaction Mode (port 6543) for CI/CD and serverless environments
+- Use Direct URL for migrations when possible
 
 ### Supabase-Specific Features
 

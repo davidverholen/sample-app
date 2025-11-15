@@ -609,6 +609,58 @@ supabase functions deploy function_name
 supabase functions logs function_name
 ```
 
+### Supabase Connection Strings
+
+Supabase provides multiple connection methods, each suited for different scenarios. **CRITICAL**: Use the correct format based on your connection type.
+
+**Connection Methods**:
+
+1. **Direct Connection** (Port 5432):
+   - **Usage**: Ideal for persistent servers that support IPv6
+   - **Format**: `postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres`
+   - **Username**: `postgres` (NO project ref prefix)
+   - **Note**: Blocked by Supabase firewall for external IPs (like GitHub Actions runners)
+
+2. **Transaction Mode Pooling** (Port 6543) - **RECOMMENDED for CI/CD**:
+   - **Usage**: Serverless functions, edge functions, transient connections (GitHub Actions)
+   - **Format**: `postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres`
+   - **Username**: `postgres` (NO project ref prefix)
+   - **Protocol**: `postgres://` (not `postgresql://`)
+   - **Limitations**: Does NOT support prepared statements (disable in connection library)
+   - **When to use**: GitHub Actions, serverless functions, environments without IPv6
+
+3. **Session Mode Pooling** (Port 5432):
+   - **Usage**: Persistent clients needing full prepared statement support
+   - **Format**: `postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres`
+   - **Username**: `postgres.[PROJECT-REF]` (WITH project ref prefix)
+   - **Host**: `aws-0-[REGION].pooler.supabase.com` (different from direct connection)
+   - **When to use**: Long-lived connections, applications requiring prepared statements
+
+**Connection String Construction**:
+```bash
+# Transaction Mode (for GitHub Actions/CI/CD)
+DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@db.${PROJECT_REF}.supabase.co:6543/postgres?sslmode=require"
+
+# Session Mode (for persistent applications)
+DATABASE_URL="postgres://postgres.${PROJECT_REF}:${ENCODED_PASSWORD}@aws-0-${REGION}.pooler.supabase.com:5432/postgres?sslmode=require"
+
+# Direct Connection (local development only)
+DATABASE_URL="postgresql://postgres:${PASSWORD}@db.${PROJECT_REF}.supabase.co:5432/postgres?sslmode=require"
+```
+
+**Common Mistakes**:
+- ❌ Using `postgres.[PROJECT-REF]` username with port 6543 (Transaction Mode) - should be `postgres`
+- ❌ Using `postgres` username with Session Mode pooler - should be `postgres.[PROJECT-REF]`
+- ❌ Using port 5432 for external IPs without IP allowlisting - use port 6543 instead
+- ❌ Using `postgresql://` protocol with Transaction Mode - use `postgres://`
+
+**Password URL Encoding**:
+- Always URL-encode passwords containing special characters
+- Use `encodeURIComponent()` in Node.js or `urllib.parse.quote()` in Python
+- Special characters like `@`, `#`, `%` must be encoded
+
+**Reference**: [Supabase Connection Strings Documentation](https://supabase.com/docs/reference/postgres/connection-strings)
+
 ### Supabase Integration with Prisma
 
 **Using Prisma with Supabase**:
@@ -617,8 +669,18 @@ supabase functions logs function_name
 supabase db pull
 # Then manually sync to Prisma schema
 
-# Or use Prisma with Supabase connection string
-DATABASE_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
+# Use Transaction Mode for Prisma in CI/CD
+DATABASE_URL="postgres://postgres:password@db.project-ref.supabase.co:6543/postgres?sslmode=require"
+```
+
+**Prisma Configuration for Supabase**:
+```prisma
+// schema.prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")  // Transaction Mode (port 6543) for CI/CD
+  directUrl = env("DIRECT_URL")    // Direct connection (port 5432) for migrations
+}
 ```
 
 **Best Practices**:
@@ -626,6 +688,8 @@ DATABASE_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
 - Use Prisma for type-safe queries
 - Keep migrations in sync
 - Generate types from Supabase schema
+- Use Transaction Mode (port 6543) for CI/CD and serverless
+- Use Direct URL for migrations when possible
 
 ### Supabase Backup and Recovery
 
