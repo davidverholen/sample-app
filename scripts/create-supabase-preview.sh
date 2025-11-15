@@ -86,7 +86,8 @@ if echo "$RESPONSE" | grep -q '"id"'; then
   DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
   
   if [ -n "$DB_PASSWORD" ] && [ -n "$DB_HOST" ]; then
-    DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
+    # Supabase requires SSL connections
+    DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
     {
       echo "database-url=$DATABASE_URL"
       echo "instance-name=$INSTANCE_NAME"
@@ -131,7 +132,9 @@ if [ -n "$SUPABASE_PROJECT_REF" ]; then
   
   # Output connection string
   # Note: Schema will be created during migration step
-  DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
+  # Supabase requires SSL connections and uses connection pooling
+  # Format: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?sslmode=require
+  DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require&pgbouncer=true"
   
   {
     echo "database-url=$DATABASE_URL"
