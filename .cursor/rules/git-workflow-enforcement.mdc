@@ -139,11 +139,61 @@ update: fix login bug
 
 ## Pull Request Enforcement
 
+### Pre-GitHub Operations Checklist
+
+**CRITICAL RULE**: ALWAYS check for and commit uncommitted changes before performing ANY GitHub operations (creating PRs, pushing branches, using GitHub API, etc.).
+
+**MANDATORY Steps Before Any GitHub Operation**:
+
+1. **Check for uncommitted changes**:
+   ```bash
+   git status
+   ```
+
+2. **If there are uncommitted changes**:
+   - Review the changes: `git diff`
+   - Stage the changes: `git add <files>` or `git add .`
+   - Commit with proper message: `git commit -m "type(scope): description"`
+   - Push to remote: `git push origin <branch-name>`
+
+3. **Verify working tree is clean**:
+   ```bash
+   git status
+   # MUST show: "nothing to commit, working tree clean"
+   ```
+
+4. **Only then proceed with GitHub operations**:
+   - Creating pull requests
+   - Pushing branches
+   - Creating releases
+   - Using GitHub API/CLI operations
+   - Any other GitHub-related tasks
+
+**Enforcement**:
+- This check is MANDATORY and cannot be skipped
+- If uncommitted changes are found, you MUST commit them first
+- Never perform GitHub operations with uncommitted changes
+- Always verify with `git status` before proceeding
+
+**Why this matters**:
+- Ensures all changes are tracked in version control
+- Prevents loss of uncommitted work
+- Maintains clean git history
+- Ensures PRs reflect the complete state of changes
+- Prevents confusion about what's included in a PR
+
 ### Before Creating PR
+
+**FIRST**: Complete the [Pre-GitHub Operations Checklist](#pre-github-operations-checklist) above - this is MANDATORY.
 
 MUST verify:
 
-1. **Code Quality**:
+1. **Git Status** (MANDATORY - must be done first):
+   - [ ] Run `git status` to check for uncommitted changes
+   - [ ] If uncommitted changes exist, commit them first
+   - [ ] Verify working tree is clean: `git status` shows "nothing to commit, working tree clean"
+
+2. **Code Quality**:
    - [ ] All tests pass (`npm test`)
    - [ ] Type checking passes (`npm run type-check`)
    - [ ] Linting passes (`npm run lint`)
@@ -152,20 +202,20 @@ MUST verify:
    - [ ] No commented-out code
    - [ ] No TODO comments without issue references
 
-2. **Documentation**:
+3. **Documentation**:
    - [ ] Code is self-documenting
    - [ ] Complex logic has comments
    - [ ] README updated if needed
    - [ ] CHANGELOG updated for user-facing changes
    - [ ] API documentation updated if applicable
 
-3. **Testing**:
+4. **Testing**:
    - [ ] Unit tests added/updated
    - [ ] Integration tests added if needed
    - [ ] E2E tests added for critical flows
    - [ ] Test coverage maintained (80%+)
 
-4. **Git**:
+5. **Git**:
    - [ ] Commit messages follow convention
    - [ ] Branch is up to date with target
    - [ ] No merge conflicts
@@ -315,22 +365,29 @@ Before ANY commit, MUST ensure:
 
 ### When Violations Detected
 
-1. **Commit Message Violations**:
+1. **Uncommitted Changes Before GitHub Operations**:
+   - **STOP** the GitHub operation immediately
+   - **REQUIRE** running `git status` to check for uncommitted changes
+   - **REQUIRE** committing all changes before proceeding
+   - **VERIFY** working tree is clean with `git status`
+   - **ONLY THEN** allow GitHub operations to proceed
+
+2. **Commit Message Violations**:
    - REJECT the commit
    - PROVIDE correct format example
    - EXPLAIN the violation
 
-2. **Branch Naming Violations**:
+3. **Branch Naming Violations**:
    - REJECT the branch creation
    - PROVIDE correct naming example
    - EXPLAIN the convention
 
-3. **PR Requirements Not Met**:
+4. **PR Requirements Not Met**:
    - REJECT the PR creation
    - LIST missing requirements
    - PROVIDE checklist
 
-4. **Code Quality Issues**:
+5. **Code Quality Issues**:
    - REJECT the commit/PR
    - LIST specific issues
    - PROVIDE fix suggestions
@@ -417,6 +474,9 @@ git push origin v1.2.3
 
 ## Best Practices
 
+- **ALWAYS check `git status` before ANY GitHub operation** (MANDATORY)
+- **ALWAYS commit uncommitted changes before GitHub operations** (MANDATORY)
+- **ALWAYS verify working tree is clean** with `git status` before proceeding
 - ALWAYS validate before committing
 - ALWAYS link changes to issues
 - ALWAYS write meaningful commit messages
