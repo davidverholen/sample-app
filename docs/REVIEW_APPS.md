@@ -163,6 +163,8 @@ Preview deployments receive the following environment variables:
 - `NEXTAUTH_URL` - Vercel preview URL
 - `NEXT_PUBLIC_APP_URL` - Vercel preview URL
 
+**Important Note**: Environment variables are set for the `preview` environment scope, which means all preview deployments share the same environment variables. The workflow sets these variables right before each deployment to ensure the latest values are used. However, if multiple PRs deploy simultaneously, they may temporarily overwrite each other's variables. For production use with many concurrent PRs, consider using the Vercel API to set deployment-specific environment variables.
+
 ## Playwright Configuration
 
 The Playwright configuration (`playwright.config.ts`) has been updated to:

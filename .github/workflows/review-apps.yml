@@ -39,6 +39,28 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "❌ VERCEL_TOKEN secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_ORG_ID }}" ]; then
+            echo "❌ VERCEL_ORG_ID secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "❌ VERCEL_PROJECT_ID secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+            echo "⚠️  SUPABASE_ACCESS_TOKEN not set, will use fallback approach"
+          fi
+          if [ -z "${{ secrets.SUPABASE_PROJECT_REF }}" ]; then
+            echo "⚠️  SUPABASE_PROJECT_REF not set, will use fallback approach"
+          fi
+          echo "✅ Required secrets validated"
+
       - name: Create Supabase preview instance
         id: create-supabase-preview
         env:
@@ -73,38 +95,49 @@ jobs:
           max_attempts=30
           attempt=0
           while [ $attempt -lt $max_attempts ]; do
-            # Try to connect to database using psql or pg_isready
-            if command -v pg_isready &> /dev/null; then
-              DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-              DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
-              if pg_isready -h "$DB_HOST" -p "${DB_PORT:-5432}" > /dev/null 2>&1; then
-                echo "✅ Database is ready"
-                exit 0
-              fi
-            else
-              # Fallback: try to run a simple Prisma command
-              if npx prisma db execute --stdin <<< "SELECT 1;" > /dev/null 2>&1; then
-                echo "✅ Database is ready"
-                exit 0
-              fi
+            # Use Prisma to check connectivity (more reliable)
+            if npx prisma db execute --stdin <<< "SELECT 1;" 2>/dev/null | grep -q "1"; then
+              echo "✅ Database is ready"
+              exit 0
             fi
             attempt=$((attempt + 1))
             echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
             sleep 5
           done
-          echo "⚠️  Database readiness check timed out, but continuing..."
-          echo "Note: Database might still be initializing. Migration step will verify connectivity."
+          echo "❌ Database readiness check timed out"
+          exit 1
+
+      - name: Create branch schema (fallback mode)
+        if: steps.create-supabase-preview.outputs.schema-name != ''
+        env:
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
+        run: |
+          npx prisma db execute --stdin <<EOF
+          CREATE SCHEMA IF NOT EXISTS "$SCHEMA_NAME";
+          SET search_path TO "$SCHEMA_NAME", public;
+          EOF
 
       - name: Apply database migrations
         env:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
         run: |
+          # If using branch schema, append it to DATABASE_URL
+          if [ -n "$SCHEMA_NAME" ]; then
+            export DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
+          fi
           npx prisma db push --accept-data-loss
 
       - name: Seed preview database
         env:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+          SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
         run: |
+          # If using branch schema, append it to DATABASE_URL
+          if [ -n "$SCHEMA_NAME" ]; then
+            export DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
+          fi
           npm run db:seed || echo "⚠️ Seeding failed, continuing..."
 
       - name: Generate NextAuth secret
@@ -123,9 +156,32 @@ jobs:
         run: |
           # Link project if not already linked
           if [ ! -f ".vercel/project.json" ]; then
-            echo "$VERCEL_PROJECT_ID" | vercel link --yes --token $VERCEL_TOKEN 2>&1 || true
+            # Use proper flags for non-interactive linking
+            vercel link --yes --token $VERCEL_TOKEN \
+              --project $VERCEL_PROJECT_ID \
+              --scope $VERCEL_ORG_ID 2>&1 || {
+              echo "⚠️  Failed to link project, creating .vercel/project.json manually"
+              # Create minimal .vercel/project.json manually
+              mkdir -p .vercel
+              echo "{\"projectId\":\"$VERCEL_PROJECT_ID\",\"orgId\":\"$VERCEL_ORG_ID\"}" > .vercel/project.json
+            }
           fi
           echo "✅ Vercel project linked"
+
+      - name: Set Vercel preview environment variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+          NEXTAUTH_SECRET: ${{ steps.generate-secret.outputs.secret }}
+        run: |
+          set -e
+          # Set environment variables for preview environment
+          # Note: These are scoped to preview environment, so we set them right before deployment
+          # to ensure this deployment uses the correct values
+          # WARNING: All preview deployments share these variables, but we update them per deployment
+          echo "$DATABASE_URL" | vercel env add DATABASE_URL preview --token $VERCEL_TOKEN --yes
+          echo "$NEXTAUTH_SECRET" | vercel env add NEXTAUTH_SECRET preview --token $VERCEL_TOKEN --yes
+          echo "✅ Environment variables set for preview environment"
 
       - name: Deploy to Vercel Preview
         id: deploy
@@ -134,16 +190,24 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          # Deploy to preview and capture URL
+          set -e
+          # Deploy to preview
           DEPLOY_OUTPUT=$(vercel --token $VERCEL_TOKEN --yes --force 2>&1)
           echo "$DEPLOY_OUTPUT"
 
-          # Extract deployment URL from output
+          # Extract deployment URL from output - try multiple methods
           DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' | head -1)
 
           if [ -z "$DEPLOYMENT_URL" ]; then
             # Try alternative pattern
             DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[^ ]*\.vercel\.app' | head -1)
+          fi
+
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            # Try to extract from JSON if available (requires jq)
+            if command -v jq &> /dev/null && echo "$DEPLOY_OUTPUT" | grep -q '{'; then
+              DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | jq -r '.urls[0] // .url // empty' 2>/dev/null || echo "")
+            fi
           fi
 
           if [ -z "$DEPLOYMENT_URL" ]; then
@@ -155,19 +219,16 @@ jobs:
           echo "preview-url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
           echo "✅ Deployed to: $DEPLOYMENT_URL"
 
-      - name: Set Vercel preview environment variables
+      - name: Set URL-based Vercel environment variables
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
-          NEXTAUTH_SECRET: ${{ steps.generate-secret.outputs.secret }}
           PREVIEW_URL: ${{ steps.deploy.outputs.preview-url }}
         run: |
-          # Set environment variables for preview deployments
-          echo "$DATABASE_URL" | vercel env add DATABASE_URL preview --token $VERCEL_TOKEN --yes || true
-          echo "$NEXTAUTH_SECRET" | vercel env add NEXTAUTH_SECRET preview --token $VERCEL_TOKEN --yes || true
-          echo "$PREVIEW_URL" | vercel env add NEXTAUTH_URL preview --token $VERCEL_TOKEN --yes || true
-          echo "$PREVIEW_URL" | vercel env add NEXT_PUBLIC_APP_URL preview --token $VERCEL_TOKEN --yes || true
-          echo "✅ Environment variables set for preview deployments"
+          set -e
+          # Set URL-based environment variables (these can be shared across previews)
+          echo "$PREVIEW_URL" | vercel env add NEXTAUTH_URL preview --token $VERCEL_TOKEN --yes
+          echo "$PREVIEW_URL" | vercel env add NEXT_PUBLIC_APP_URL preview --token $VERCEL_TOKEN --yes
+          echo "✅ URL-based environment variables set"
 
       - name: Comment PR with preview URL
         uses: actions/github-script@v7
@@ -290,10 +351,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js for cleanup
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies for cleanup
+        run: npm ci
+
+      - name: Generate Prisma Client for cleanup
+        run: npx prisma generate
+
       - name: Cleanup Supabase preview instance
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           chmod +x scripts/cleanup-supabase-preview.sh
           ./scripts/cleanup-supabase-preview.sh \

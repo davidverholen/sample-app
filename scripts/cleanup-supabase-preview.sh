@@ -49,16 +49,28 @@ fi
 # Fallback: Clean up branch-specific schema from shared database
 if [ -n "$SUPABASE_PROJECT_REF" ]; then
   SCHEMA_NAME="preview_${SANITIZED_BRANCH}_pr${PR_NUMBER}"
-  DB_PASSWORD="${SUPABASE_DB_PASSWORD:-postgres}"
+  DB_PASSWORD="${SUPABASE_DB_PASSWORD:-}"
   DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
   DB_NAME="postgres"
   
-  DATABASE_URL="postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
+  # Get password from environment or use default (will fail if wrong, but allows script to continue)
+  if [ -z "$DB_PASSWORD" ]; then
+    echo "⚠️  Warning: SUPABASE_DB_PASSWORD not set, attempting cleanup with default"
+    DB_PASSWORD="postgres"
+  fi
+  
+  # Construct DATABASE_URL with SSL requirement for Supabase
+  DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+  export DATABASE_URL
   
   echo "🗑️  Dropping schema: $SCHEMA_NAME"
   
-  # Use Prisma to drop the schema
+  # Use Prisma to drop the schema (Prisma should be available from workflow setup)
   if command -v npx &> /dev/null; then
+    # Set schema in connection string
+    SCHEMA_DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
+    export DATABASE_URL="$SCHEMA_DATABASE_URL"
+    
     npx prisma db execute --stdin <<EOF || echo "⚠️  Schema cleanup failed, continuing..."
 DROP SCHEMA IF EXISTS "$SCHEMA_NAME" CASCADE;
 EOF
