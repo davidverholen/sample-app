@@ -294,10 +294,11 @@ For more administrative tasks using `gh` CLI, see [Git Workflow Documentation](.
 This happens when the status check names in branch protection don't match the actual status check names created by GitHub Actions.
 
 1. **Check the actual status check names**:
+
    ```bash
    # View status checks on a PR
    gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[].name'
-   
+
    # Or check via API
    gh api repos/:owner/:repo/pulls/<number> --jq '.head.sha' | \
      xargs -I {} gh api repos/:owner/:repo/commits/{}/check-runs --jq '.check_runs[].name'
