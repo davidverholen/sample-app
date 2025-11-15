@@ -42,7 +42,7 @@ This guide will help you set up the GitHub MCP server to work with your GitHub r
    - Or navigate to: Extensions → MCP Servers
 
 3. **Add GitHub MCP Server Configuration**:
-   
+
    You'll need to add a configuration entry. The exact format depends on Cursor's MCP configuration, but typically it looks like:
 
    ```json
@@ -50,10 +50,7 @@ This guide will help you set up the GitHub MCP server to work with your GitHub r
      "mcpServers": {
        "github": {
          "command": "npx",
-         "args": [
-           "-y",
-           "@modelcontextprotocol/server-github"
-         ],
+         "args": ["-y", "@modelcontextprotocol/server-github"],
          "env": {
            "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token-here"
          }
@@ -76,6 +73,7 @@ This guide will help you set up the GitHub MCP server to work with your GitHub r
 ## Step 3: Restart Cursor
 
 After configuring the MCP server:
+
 1. Save the configuration
 2. Restart Cursor completely
 3. The GitHub MCP server should now be available
@@ -83,6 +81,7 @@ After configuring the MCP server:
 ## Step 4: Verify Setup
 
 Once Cursor restarts, you should be able to:
+
 - Access GitHub repositories
 - Create issues, pull requests
 - Manage branches and commits
@@ -98,6 +97,7 @@ If you haven't already connected your local repository to GitHub:
    - Copy the repository URL
 
 2. **Add Remote to Your Local Repository**:
+
    ```bash
    git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
    # Or use SSH:
@@ -123,17 +123,20 @@ If you haven't already connected your local repository to GitHub:
 ## Troubleshooting
 
 ### MCP Server Not Appearing
+
 - Ensure Cursor is fully restarted
 - Check that the configuration syntax is correct
 - Verify the token has the correct permissions
 - Check Cursor's logs for MCP-related errors
 
 ### Authentication Errors
+
 - Verify your token is still valid (not expired)
 - Check that the token has the required scopes
 - Regenerate the token if needed
 
 ### Connection Issues
+
 - Ensure you have internet connectivity
 - Check GitHub's status: https://www.githubstatus.com/
 - Verify your token hasn't been revoked
@@ -160,8 +163,8 @@ gh pr create
 ## Need Help?
 
 If you encounter issues:
+
 1. Check Cursor's documentation on MCP servers
 2. Review the GitHub MCP server documentation
 3. Check Cursor's logs for error messages
 4. Verify your token permissions on GitHub
-

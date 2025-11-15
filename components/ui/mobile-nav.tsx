@@ -40,27 +40,24 @@ export function MobileNav({ children }: MobileNavProps) {
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
+            className="bg-background/80 fixed inset-0 z-40 backdrop-blur-sm md:hidden"
             onClick={() => setIsOpen(false)}
             aria-hidden="true"
           />
           <nav
             id="mobile-nav"
             className={cn(
-              'fixed top-16 left-0 right-0 bottom-0 z-50',
-              'bg-background border-b border-border',
+              'fixed bottom-0 left-0 right-0 top-16 z-50',
+              'border-b border-border bg-background',
               'md:hidden',
               'overflow-y-auto'
             )}
             aria-label="Mobile navigation"
           >
-            <div className="container mx-auto px-4 py-6 space-y-4">
-              {children}
-            </div>
+            <div className="container mx-auto space-y-4 px-4 py-6">{children}</div>
           </nav>
         </>
       )}
     </>
   )
 }
-

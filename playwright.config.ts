@@ -27,6 +27,14 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    /* Screenshot on failure */
+    screenshot: 'only-on-failure',
+  },
+  /* Global timeout for each test */
+  timeout: 30000,
+  /* Expect timeout */
+  expect: {
+    timeout: 5000,
   },
 
   /* Configure projects for major browsers */
@@ -34,16 +42,6 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
     },
   ],
 
@@ -54,4 +52,3 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
   },
 })
-

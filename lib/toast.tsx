@@ -4,7 +4,12 @@ import { createContext, useContext, useState, useCallback } from 'react'
 import { ToastContainer, ToastProps, ToastVariant } from '@/components/ui/toast'
 
 interface ToastContextType {
-  showToast: (title: string, description?: string, variant?: ToastVariant, duration?: number) => void
+  showToast: (
+    title: string,
+    description?: string,
+    variant?: ToastVariant,
+    duration?: number
+  ) => void
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined)
@@ -15,7 +20,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const showToast = useCallback(
     (title: string, description?: string, variant: ToastVariant = 'info', duration = 5000) => {
       const id = Math.random().toString(36).substring(7)
-      setToasts((prev) => [...prev, { id, title, description, variant, duration, onClose: () => {} }])
+      setToasts((prev) => [
+        ...prev,
+        { id, title, description, variant, duration, onClose: () => {} },
+      ])
     },
     []
   )
@@ -42,4 +50,3 @@ export function useToast() {
   }
   return context
 }
-

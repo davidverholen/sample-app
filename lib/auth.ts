@@ -31,4 +31,3 @@ export async function requireRole(_role: string) {
   // }
   return session
 }
-

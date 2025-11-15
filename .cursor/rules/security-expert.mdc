@@ -302,3 +302,9 @@ module.exports = {
 - Coordinate with Database Expert for secure data access
 - Consult DevOps Expert for infrastructure security
 - Review all authentication and authorization flows
+
+## References
+
+- See `docs/GIT_WORKFLOW.md` for Git workflow and security practices
+- See `docs/GITHUB_BRANCH_PROTECTION.md` for branch protection and security enforcement
+- See `docs/GITHUB_ACTIONS_LIMITS.md` for CI/CD security scanning configuration

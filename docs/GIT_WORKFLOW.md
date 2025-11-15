@@ -17,8 +17,9 @@ This document defines the Git workflow, branching strategy, and change managemen
 ### Branch Types
 
 #### `main` (Production)
+
 - **Purpose**: Production-ready code only
-- **Protection**: 
+- **Protection**:
   - Requires PR approval (minimum 1 reviewer)
   - Requires passing CI/CD checks
   - No direct commits allowed
@@ -27,14 +28,16 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Naming**: `main`
 
 #### `develop` (Development)
+
 - **Purpose**: Integration branch for features
-- **Protection**: 
+- **Protection**:
   - Requires PR approval for non-team members
   - Requires passing CI checks
 - **Deployment**: Auto-deploys to staging environment
 - **Naming**: `develop`
 
 #### `feature/*` (Feature Branches)
+
 - **Purpose**: New features or enhancements
 - **Naming**: `feature/issue-number-short-description`
   - Example: `feature/123-user-authentication`
@@ -44,6 +47,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `bugfix/*` (Bug Fix Branches)
+
 - **Purpose**: Bug fixes for `develop` branch
 - **Naming**: `bugfix/issue-number-short-description`
   - Example: `bugfix/789-login-error`
@@ -52,6 +56,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `hotfix/*` (Hotfix Branches)
+
 - **Purpose**: Critical production fixes
 - **Naming**: `hotfix/issue-number-short-description`
   - Example: `hotfix/999-security-patch`
@@ -60,6 +65,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `release/*` (Release Branches)
+
 - **Purpose**: Prepare new production release
 - **Naming**: `release/v1.2.3` or `release/v1.2.3-rc.1`
 - **Source**: Branch from `develop`
@@ -176,6 +182,7 @@ Add database index on email field to improve query performance.
 
 Before creating a PR, ensure:
 
+- [ ] **All uncommitted changes are committed and pushed** (see [Pre-GitHub Operations Checklist](#pre-github-operations-checklist))
 - [ ] Code follows project style guidelines
 - [ ] All tests pass locally (`npm test`)
 - [ ] Type checking passes (`npm run type-check`)
@@ -186,6 +193,45 @@ Before creating a PR, ensure:
 - [ ] Branch is up to date with target branch
 - [ ] PR description is complete
 
+### Pre-GitHub Operations Checklist
+
+**CRITICAL RULE**: Always check for and commit uncommitted changes before performing any GitHub operations (creating PRs, pushing branches, etc.).
+
+Before any GitHub operation:
+
+1. **Check for uncommitted changes**:
+
+   ```bash
+   git status
+   ```
+
+2. **If there are uncommitted changes**:
+   - Review the changes: `git diff`
+   - Stage the changes: `git add <files>` or `git add .`
+   - Commit with proper message: `git commit -m "type(scope): description"`
+   - Push to remote: `git push origin <branch-name>`
+
+3. **Verify working tree is clean**:
+
+   ```bash
+   git status
+   # Should show: "nothing to commit, working tree clean"
+   ```
+
+4. **Only then proceed with GitHub operations**:
+   - Creating pull requests
+   - Pushing branches
+   - Creating releases
+   - Any other GitHub API operations
+
+**Why this matters**:
+
+- Ensures all changes are tracked in version control
+- Prevents loss of uncommitted work
+- Maintains clean git history
+- Ensures PRs reflect the complete state of changes
+- Prevents confusion about what's included in a PR
+
 ### PR Title Format
 
 Follow the same convention as commit messages:
@@ -195,6 +241,7 @@ Follow the same convention as commit messages:
 ```
 
 Examples:
+
 - `feat(auth): add password reset functionality`
 - `fix(api): resolve user validation error`
 - `refactor(ui): extract Button component`
@@ -317,6 +364,7 @@ git push origin release/v1.2.3
 For critical production issues:
 
 1. Create hotfix branch from `main`:
+
    ```bash
    git checkout main
    git pull origin main
@@ -331,6 +379,7 @@ For critical production issues:
    - Fast-track review process
 
 4. Merge to `main` and tag:
+
    ```bash
    git tag -a v1.2.4 -m "Hotfix v1.2.4"
    git push origin v1.2.4
@@ -351,17 +400,21 @@ Maintain `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/
 ## [1.2.3] - 2024-01-15
 
 ### Added
+
 - User authentication with OAuth2
 - Dashboard analytics
 
 ### Changed
+
 - Improved API response times
 
 ### Fixed
+
 - Login error handling
 - Database connection pooling
 
 ### Security
+
 - Updated dependencies with security patches
 ```
 
@@ -369,7 +422,7 @@ Maintain `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/
 
 ### For Authors
 
-1. **Keep PRs Small**: 
+1. **Keep PRs Small**:
    - Focused on single feature/fix
    - Easier to review
    - Faster to merge
@@ -469,6 +522,7 @@ Automated checks on every PR:
 ### GitHub Actions Workflows
 
 See `.github/workflows/` for:
+
 - `ci.yml`: Continuous Integration
 - `release.yml`: Release automation
 - `security.yml`: Security scanning
@@ -507,16 +561,175 @@ For complete protection, configure GitHub branch protection rules:
 
 See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed configuration instructions.
 
+### Using GitHub CLI (gh) for Administrative Tasks
+
+The GitHub CLI (`gh`) provides a powerful command-line interface for managing repository settings and administrative tasks. This is especially useful for:
+
+- Updating branch protection rules
+- Managing repository settings
+- Configuring workflows
+- Managing issues and pull requests programmatically
+
+#### Installation
+
+```bash
+# Linux (Debian/Ubuntu)
+sudo apt install gh
+
+# macOS
+brew install gh
+
+# Or download from: https://cli.github.com/
+```
+
+#### Authentication
+
+```bash
+# Login to GitHub
+gh auth login
+
+# Verify authentication
+gh auth status
+```
+
+#### Common Administrative Tasks
+
+**Update Branch Protection Status Checks**
+
+When status check names change (e.g., after renaming a workflow), update branch protection:
+
+```bash
+# Update main branch protection
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build",
+    "CI / e2e",
+    "CI / security",
+    "CI / commit-message",
+    "CI / pr-checks"
+  ]
+}
+EOF
+
+# Update develop branch protection
+gh api repos/:owner/:repo/branches/develop/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build"
+  ]
+}
+EOF
+```
+
+**View Current Branch Protection Settings**
+
+```bash
+# View main branch protection
+gh api repos/:owner/:repo/branches/main/protection
+
+# View required status checks
+gh api repos/:owner/:repo/branches/main/protection --jq '.required_status_checks.contexts[]'
+```
+
+**Manage Repository Settings**
+
+```bash
+# View repository settings
+gh repo view --json name,description,visibility
+
+# Update repository description
+gh repo edit --description "New description"
+
+# Enable/disable features
+gh repo edit --enable-issues
+gh repo edit --enable-wiki
+```
+
+**Manage Branch Protection Rules**
+
+```bash
+# List all branch protection rules
+gh api repos/:owner/:repo/branches --jq '.[].name'
+
+# Get specific branch protection details
+gh api repos/:owner/:repo/branches/main/protection
+
+# Update pull request review requirements
+gh api repos/:owner/:repo/branches/main/protection/required_pull_request_reviews \
+  -X PATCH -f required_approving_review_count=0 \
+  -f dismiss_stale_reviews=false
+```
+
+**Workflow Management**
+
+```bash
+# List workflows
+gh workflow list
+
+# View workflow runs
+gh run list
+
+# View specific workflow run
+gh run view <run-id>
+
+# Rerun a failed workflow
+gh run rerun <run-id>
+```
+
+**Issue and PR Management**
+
+```bash
+# List issues
+gh issue list
+
+# Create an issue
+gh issue create --title "Issue title" --body "Issue description"
+
+# List PRs
+gh pr list
+
+# View PR details
+gh pr view <number>
+
+# Merge a PR
+gh pr merge <number> --squash
+```
+
+#### Tips
+
+- Use `:owner/:repo` as a placeholder - `gh` will automatically use the current repository
+- Use `--jq` flag for JSON output filtering (requires `jq` to be installed)
+- Use `--input -` with heredoc syntax for complex JSON payloads
+- Always verify changes with `gh api` GET requests before making PATCH/PUT requests
+
+#### Security Notes
+
+- `gh` uses your GitHub authentication token
+- Ensure you have appropriate repository permissions (admin for branch protection)
+- Review changes carefully before applying them
+- Consider testing on a non-production branch first
+
 ### Enforcement Summary
 
-| Rule | Local Hook | CI/CD | GitHub Protection |
-|------|------------|-------|-------------------|
-| Commit message format | ✅ commit-msg | ✅ Yes | ⚠️ Optional |
-| Code quality | ✅ pre-commit | ✅ Yes | ✅ Yes |
-| Branch naming | ✅ pre-push | ❌ No | ⚠️ Optional |
-| Direct commits to main/develop | ✅ pre-push | ❌ No | ✅ Yes |
-| PR requirements | ❌ No | ✅ Yes | ✅ Yes |
-| Required reviews | ❌ No | ❌ No | ✅ Yes |
+| Rule                           | Local Hook    | CI/CD  | GitHub Protection |
+| ------------------------------ | ------------- | ------ | ----------------- |
+| Commit message format          | ✅ commit-msg | ✅ Yes | ⚠️ Optional       |
+| Code quality                   | ✅ pre-commit | ✅ Yes | ✅ Yes            |
+| Branch naming                  | ✅ pre-push   | ❌ No  | ⚠️ Optional       |
+| Direct commits to main/develop | ✅ pre-push   | ❌ No  | ✅ Yes            |
+| PR requirements                | ❌ No         | ✅ Yes | ✅ Yes            |
+| Required reviews               | ❌ No         | ❌ No  | ✅ Yes            |
 
 **Note**: Hooks can be bypassed with `--no-verify`, but this should only be used in emergencies. GitHub protection rules cannot be bypassed (except by repository admins).
 
@@ -524,7 +737,7 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 
 ### General
 
-1. **Keep Branches Clean**: 
+1. **Keep Branches Clean**:
    - One feature per branch
    - Regular commits
    - Meaningful commit messages
@@ -566,6 +779,7 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 ### Common Issues
 
 1. **Merge Conflicts**:
+
    ```bash
    git checkout develop
    git pull origin develop
@@ -591,4 +805,3 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 - [Semantic Versioning](https://semver.org/)
 - [Keep a Changelog](https://keepachangelog.com/)
 - [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
-

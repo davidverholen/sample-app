@@ -44,7 +44,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    
+
     // Validate email format
     if (!emailRegex.test(email)) {
       setEmailError('Please enter a valid email address')
@@ -89,25 +89,18 @@ export default function LoginPage() {
       {/* Skip Navigation Link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
       >
         Skip to main content
       </a>
 
       {/* ARIA Live Region for Status Updates */}
-      <div
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-        id="status-announcements"
-      />
+      <div aria-live="polite" aria-atomic="true" className="sr-only" id="status-announcements" />
 
       <header className="border-b border-border">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <span className="font-mono text-lg font-bold text-primary">
-              {'<DevSaaS />'}
-            </span>
+            <span className="font-mono text-lg font-bold text-primary">{'<DevSaaS />'}</span>
           </Link>
           <ThemeToggle />
         </div>
@@ -115,34 +108,30 @@ export default function LoginPage() {
 
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4">
         <div className="w-full max-w-md space-y-8" id="main-content">
-          <div className="text-center space-y-2">
+          <div className="space-y-2 text-center">
             <h1 className="text-3xl font-bold">Sign In</h1>
             <p className="text-sm text-muted-foreground">
               Enter your credentials to access your account
             </p>
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-8 shadow-sm">
+          <div className="bg-card rounded-lg border border-border p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6" noValidate>
               {error && (
                 <div
                   ref={errorRef}
                   id="form-error"
-                  className="rounded-md bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20"
+                  className="bg-destructive/10 border-destructive/20 rounded-md border p-3 text-sm text-destructive"
                   role="alert"
                   aria-live="assertive"
                   tabIndex={-1}
                 >
-                  <span className="font-mono text-xs font-semibold">Error:</span>{' '}
-                  {error}
+                  <span className="font-mono text-xs font-semibold">Error:</span> {error}
                 </div>
               )}
 
               <div className="space-y-2">
-                <label
-                  htmlFor="email"
-                  className="text-sm font-medium leading-none"
-                >
+                <label htmlFor="email" className="text-sm font-medium leading-none">
                   Email
                 </label>
                 <Input
@@ -161,10 +150,7 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-2">
-                <label
-                  htmlFor="password"
-                  className="text-sm font-medium leading-none"
-                >
+                <label htmlFor="password" className="text-sm font-medium leading-none">
                   Password
                 </label>
                 <PasswordInput
@@ -195,10 +181,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
-            <Link
-              href="/"
-              className="hover:text-foreground transition-colors underline"
-            >
+            <Link href="/" className="underline transition-colors hover:text-foreground">
               ← Back to home
             </Link>
           </div>
@@ -207,4 +190,3 @@ export default function LoginPage() {
     </div>
   )
 }
-

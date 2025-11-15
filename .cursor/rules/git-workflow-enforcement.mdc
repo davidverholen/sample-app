@@ -139,11 +139,61 @@ update: fix login bug
 
 ## Pull Request Enforcement
 
+### Pre-GitHub Operations Checklist
+
+**CRITICAL RULE**: ALWAYS check for and commit uncommitted changes before performing ANY GitHub operations (creating PRs, pushing branches, using GitHub API, etc.).
+
+**MANDATORY Steps Before Any GitHub Operation**:
+
+1. **Check for uncommitted changes**:
+   ```bash
+   git status
+   ```
+
+2. **If there are uncommitted changes**:
+   - Review the changes: `git diff`
+   - Stage the changes: `git add <files>` or `git add .`
+   - Commit with proper message: `git commit -m "type(scope): description"`
+   - Push to remote: `git push origin <branch-name>`
+
+3. **Verify working tree is clean**:
+   ```bash
+   git status
+   # MUST show: "nothing to commit, working tree clean"
+   ```
+
+4. **Only then proceed with GitHub operations**:
+   - Creating pull requests
+   - Pushing branches
+   - Creating releases
+   - Using GitHub API/CLI operations
+   - Any other GitHub-related tasks
+
+**Enforcement**:
+- This check is MANDATORY and cannot be skipped
+- If uncommitted changes are found, you MUST commit them first
+- Never perform GitHub operations with uncommitted changes
+- Always verify with `git status` before proceeding
+
+**Why this matters**:
+- Ensures all changes are tracked in version control
+- Prevents loss of uncommitted work
+- Maintains clean git history
+- Ensures PRs reflect the complete state of changes
+- Prevents confusion about what's included in a PR
+
 ### Before Creating PR
+
+**FIRST**: Complete the [Pre-GitHub Operations Checklist](#pre-github-operations-checklist) above - this is MANDATORY.
 
 MUST verify:
 
-1. **Code Quality**:
+1. **Git Status** (MANDATORY - must be done first):
+   - [ ] Run `git status` to check for uncommitted changes
+   - [ ] If uncommitted changes exist, commit them first
+   - [ ] Verify working tree is clean: `git status` shows "nothing to commit, working tree clean"
+
+2. **Code Quality**:
    - [ ] All tests pass (`npm test`)
    - [ ] Type checking passes (`npm run type-check`)
    - [ ] Linting passes (`npm run lint`)
@@ -152,20 +202,20 @@ MUST verify:
    - [ ] No commented-out code
    - [ ] No TODO comments without issue references
 
-2. **Documentation**:
+3. **Documentation**:
    - [ ] Code is self-documenting
    - [ ] Complex logic has comments
    - [ ] README updated if needed
    - [ ] CHANGELOG updated for user-facing changes
    - [ ] API documentation updated if applicable
 
-3. **Testing**:
+4. **Testing**:
    - [ ] Unit tests added/updated
    - [ ] Integration tests added if needed
    - [ ] E2E tests added for critical flows
    - [ ] Test coverage maintained (80%+)
 
-4. **Git**:
+5. **Git**:
    - [ ] Commit messages follow convention
    - [ ] Branch is up to date with target
    - [ ] No merge conflicts
@@ -197,10 +247,43 @@ MUST include:
 
 ### PR Review Requirements
 
-- Minimum 1 approval required (2 for security-related changes)
+**For Solo Developers**:
+- **Self-review is REQUIRED** before merging any PR
+- Complete the self-review checklist (see below)
 - All CI checks MUST pass
 - No merge conflicts
 - Branch MUST be up to date with target
+
+**For Teams**:
+- Minimum 1 external approval required (2 for security-related changes)
+- All CI checks MUST pass
+- No merge conflicts
+- Branch MUST be up to date with target
+
+### Self-Review Checklist (MANDATORY for Solo Developers)
+
+Before merging ANY PR, you MUST complete this checklist:
+
+- [ ] **Code Review**: Reviewed all changed files line-by-line
+- [ ] **Functionality**: Verified the code works as intended
+- [ ] **Testing**: All tests pass and coverage meets threshold (80%+)
+- [ ] **Code Quality**: No linting errors, proper formatting, TypeScript strict mode
+- [ ] **Documentation**: Updated README/CHANGELOG/docs if needed
+- [ ] **Security**: No secrets committed, input validation implemented
+- [ ] **Performance**: No obvious performance issues
+- [ ] **Accessibility**: UI changes are accessible (WCAG 2.1 AA)
+- [ ] **Error Handling**: Error cases are handled appropriately
+- [ ] **Edge Cases**: Edge cases are considered and tested
+- [ ] **CI Checks**: All CI/CD checks pass
+- [ ] **Git Standards**: Commit messages and branch name follow conventions
+
+**Self-Review Process**:
+1. Wait at least 1 hour after creating PR (fresh eyes)
+2. Review code as if reviewing someone else's work
+3. Test the changes locally
+4. Complete the checklist above
+5. Add a self-review comment to the PR documenting completion
+6. Only then proceed with merge
 
 ## Release Process Enforcement
 
@@ -220,11 +303,20 @@ Before merging release PR:
 - [ ] All tests pass
 - [ ] Documentation updated
 - [ ] Release notes prepared
-- [ ] 2 approvals obtained
+- [ ] **Solo Developers**: Self-review checklist completed
+- [ ] **Teams**: 2 approvals obtained
 - [ ] All CI checks pass
 
 ### Hotfix Process
 
+**For Solo Developers**:
+1. MUST branch from `main`
+2. MUST include issue number in branch name
+3. MUST complete self-review checklist (see Self-Review Checklist above)
+4. MUST merge to both `main` and `develop`
+5. MUST create release tag
+
+**For Teams**:
 1. MUST branch from `main`
 2. MUST include issue number in branch name
 3. MUST require 2 approvals
@@ -273,22 +365,29 @@ Before ANY commit, MUST ensure:
 
 ### When Violations Detected
 
-1. **Commit Message Violations**:
+1. **Uncommitted Changes Before GitHub Operations**:
+   - **STOP** the GitHub operation immediately
+   - **REQUIRE** running `git status` to check for uncommitted changes
+   - **REQUIRE** committing all changes before proceeding
+   - **VERIFY** working tree is clean with `git status`
+   - **ONLY THEN** allow GitHub operations to proceed
+
+2. **Commit Message Violations**:
    - REJECT the commit
    - PROVIDE correct format example
    - EXPLAIN the violation
 
-2. **Branch Naming Violations**:
+3. **Branch Naming Violations**:
    - REJECT the branch creation
    - PROVIDE correct naming example
    - EXPLAIN the convention
 
-3. **PR Requirements Not Met**:
+4. **PR Requirements Not Met**:
    - REJECT the PR creation
    - LIST missing requirements
    - PROVIDE checklist
 
-4. **Code Quality Issues**:
+5. **Code Quality Issues**:
    - REJECT the commit/PR
    - LIST specific issues
    - PROVIDE fix suggestions
@@ -375,6 +474,9 @@ git push origin v1.2.3
 
 ## Best Practices
 
+- **ALWAYS check `git status` before ANY GitHub operation** (MANDATORY)
+- **ALWAYS commit uncommitted changes before GitHub operations** (MANDATORY)
+- **ALWAYS verify working tree is clean** with `git status` before proceeding
 - ALWAYS validate before committing
 - ALWAYS link changes to issues
 - ALWAYS write meaningful commit messages
@@ -384,8 +486,295 @@ git push origin v1.2.3
 - ALWAYS follow semantic versioning
 - ALWAYS maintain changelog
 
+## GitHub Branch Protection and Status Checks
+
+### Status Check Naming Convention
+
+**CRITICAL**: GitHub status check context names use the job's `name:` field from the workflow file, NOT `workflow-name / job-name`.
+
+- ✅ **CORRECT**: `Lint`, `Type Check`, `Test`, `Build`, `E2E Tests`, etc. (from the job's `name:` field)
+- ❌ **INCORRECT**: `CI / lint`, `lint`, `type-check`, etc. (unless that's the actual job name)
+
+**When configuring or updating branch protection**:
+- ALWAYS check the actual status check names from a PR or workflow file
+- Use the exact job name from the workflow's `name:` field (case-sensitive)
+- To find actual names: `gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[].name'`
+
+**Required Status Checks for `main` branch**:
+- `Lint` (from job `name: Lint`)
+- `Type Check` (from job `name: Type Check`)
+- `Test` (from job `name: Test`)
+- `Build` (from job `name: Build`)
+- `E2E Tests` (from job `name: E2E Tests`)
+- `Security Scan` (from job `name: Security Scan`)
+- `Validate Commit Messages` (from job `name: Validate Commit Messages`)
+- `PR Checks` (from job `name: PR Checks`)
+
+**Required Status Checks for `develop` branch**:
+- `Lint`
+- `Type Check`
+- `Test`
+- `Build`
+
+### Using GitHub CLI for Administrative Tasks
+
+When performing administrative tasks on GitHub (especially branch protection updates), **ALWAYS use GitHub CLI (`gh`)** instead of manual UI operations.
+
+**Prerequisites**:
+```bash
+# Verify gh CLI is installed and authenticated
+gh auth status
+```
+
+**Updating Branch Protection Status Checks**:
+
+When status check names need to be updated (e.g., after workflow renaming), use:
+
+```bash
+# Update main branch protection
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "Lint",
+    "Type Check",
+    "Test",
+    "Build",
+    "E2E Tests",
+    "Security Scan",
+    "Validate Commit Messages",
+    "PR Checks"
+  ]
+}
+EOF
+
+# Update develop branch protection
+gh api repos/:owner/:repo/branches/develop/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "Lint",
+    "Type Check",
+    "Test",
+    "Build"
+  ]
+}
+EOF
+```
+
+**Verifying Branch Protection**:
+
+```bash
+# Check current status checks for main branch
+gh api repos/:owner/:repo/branches/main/protection --jq '.required_status_checks.contexts[]'
+
+# Check current status checks for develop branch
+gh api repos/:owner/:repo/branches/develop/protection --jq '.required_status_checks.contexts[]'
+```
+
+**When to Update Branch Protection**:
+- When workflow names change
+- When job names change in CI workflows
+- When adding or removing required status checks
+- When troubleshooting "required status checks do not match expected builds" errors
+
+**Troubleshooting Status Check Mismatches**:
+
+If PRs show "required status checks do not match expected builds":
+1. Check actual status check names in PR: `gh pr view <number> --json statusCheckRollup`
+2. Compare with branch protection settings
+3. Update branch protection using `gh api` commands above
+4. Verify the update worked
+
+## PR Review Best Practices
+
+### Security Checks
+- **MUST** fail builds for high/critical security vulnerabilities
+- Security scans should NOT use `continue-on-error: true` for blocking issues
+- npm audit should fail for `--audit-level=high` or `--audit-level=critical`
+- Secret scanning (TruffleHog) should block merges when secrets are detected
+
+### Test Coverage Requirements
+- **MANDATORY**: 80% minimum coverage threshold (branches, functions, lines, statements)
+- Coverage thresholds MUST be enforced in CI/CD - builds will fail if not met
+- Jest configuration should explicitly fail if thresholds aren't met
+- CI workflow should verify coverage file generation AND threshold compliance
+
+### Test Quality Standards
+- Tests MUST include error handling scenarios (not just happy paths)
+- Edge cases MUST be tested (null/undefined props, API failures, etc.)
+- E2E tests MUST cover critical user flows (authentication, form submissions, error handling)
+- Test mocks MUST cover both success and error scenarios
+
+### CI/CD Workflow Best Practices
+- PR summary jobs should have explicit dependencies (not all jobs)
+- Use `needs: [lint, type-check, test, build]` for core checks
+- Optional jobs (like E2E) should not block PR summary
+- All jobs MUST have timeouts to prevent infinite hangs
+- Artifact uploads should use `if: always()` to capture failures
+
+### Code Review Checklist
+When reviewing PRs, ensure:
+- [ ] Security checks are blocking (not just warnings)
+- [ ] Coverage thresholds are explicitly verified
+- [ ] Error handling is tested
+- [ ] Edge cases are covered
+- [ ] E2E tests exist for critical flows
+- [ ] CI workflow dependencies are explicit
+- [ ] All jobs have appropriate timeouts
+
+## Administrative Tasks
+
+### GitHub Repository Administration
+
+When performing administrative tasks, **ALWAYS**:
+
+1. **Use GitHub CLI (`gh`)** for programmatic operations
+2. **Verify current settings** before making changes
+3. **Document changes** in commit messages and PR descriptions
+4. **Test changes** on non-production branches when possible
+
+### Common Administrative Tasks
+
+**Branch Protection Management**:
+- Use `gh api` to update branch protection rules
+- Always verify status check names match actual CI workflow job names
+- Use `--jq` flag for readable JSON output
+
+**Repository Settings**:
+- Use `gh repo edit` for repository-level settings
+- Use `gh api` for advanced configuration
+
+**Workflow Management**:
+- Use `gh workflow list` to view workflows
+- Use `gh run list` to view workflow runs
+- Use `gh run rerun <id>` to rerun failed workflows
+
+See `docs/GIT_WORKFLOW.md#using-github-cli-gh-for-administrative-tasks` for detailed examples.
+
+## Git Setup and Troubleshooting
+
+### Initial Setup
+
+When setting up the Git workflow for new developers or repositories:
+
+1. **Install Dependencies** (includes Husky setup):
+   ```bash
+   npm install
+   ```
+
+2. **Configure Commit Template**:
+   ```bash
+   git config commit.template .gitmessage
+   # Or globally:
+   git config --global commit.template .gitmessage
+   ```
+
+3. **Verify Husky Installation**:
+   ```bash
+   ls -la .husky/
+   # Should see: pre-commit, commit-msg, pre-push
+   ```
+
+4. **Make Hooks Executable** (if needed):
+   ```bash
+   chmod +x .husky/pre-commit
+   chmod +x .husky/commit-msg
+   chmod +x .husky/pre-push
+   ```
+
+5. **Create Develop Branch** (if not exists):
+   ```bash
+   git checkout -b develop
+   git push -u origin develop
+   ```
+
+### Troubleshooting Common Issues
+
+**Husky Hooks Not Running**:
+```bash
+# Check if Husky is installed
+npm list husky
+
+# Reinstall Husky
+npm run prepare
+
+# Check Git hooks path
+git config core.hooksPath  # Should be .husky
+
+# Set hooks path manually if needed
+git config core.hooksPath .husky
+```
+
+**Commit Message Validation Failing**:
+- Ensure format: `<type>(<scope>): <subject>`
+- Check subject line is max 72 characters
+- Use valid type (feat, fix, docs, etc.)
+
+**Pre-commit Checks Failing**:
+- Fix linting errors: `npm run lint`
+- Fix formatting: `npm run format`
+- Fix type errors: `npm run type-check`
+- Fix test failures: `npm test`
+
+**CI/CD Workflows Not Running**:
+- Check GitHub Actions is enabled
+- Verify workflow files are in `.github/workflows/`
+- Check workflow syntax
+- Ensure secrets are configured
+
+### Required GitHub Secrets
+
+For CI/CD workflows, these secrets must be configured in GitHub Settings → Secrets and variables → Actions:
+
+- `DATABASE_URL`: Database connection string
+- `NEXTAUTH_SECRET`: NextAuth secret
+- `NEXTAUTH_URL`: Application URL
+- `STAGING_DATABASE_URL`: Staging database URL (optional)
+- `STAGING_NEXTAUTH_SECRET`: Staging NextAuth secret (optional)
+- `STAGING_NEXTAUTH_URL`: Staging URL (optional)
+- `CODECOV_TOKEN`: Codecov upload token (optional)
+
+### Quick Reference
+
+**Branch Strategy**:
+```
+main (production)
+  │
+  │ (hotfix)
+  │
+develop (staging)
+  │
+  ├── feature/123-* (new features)
+  ├── bugfix/123-* (bug fixes)
+  └── release/v1.2.3 (releases)
+```
+
+**Commit Message Format**:
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types**: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+**Enforcement Points**:
+- **Pre-commit**: Linting, formatting, type checking, tests
+- **Commit Message**: Format validation, subject length check
+- **Pre-push**: Build verification, full test suite, coverage check (80% threshold)
+- **CI/CD**: All pre-commit checks, E2E tests, security scanning, PR title validation
+
 ## References
 
 - See `docs/GIT_WORKFLOW.md` for complete workflow documentation
+- See `docs/GIT_SETUP.md` for detailed setup instructions and troubleshooting
+- See `docs/GIT_WORKFLOW_SUMMARY.md` for quick reference guide
+- See `docs/GITHUB_BRANCH_PROTECTION.md` for branch protection setup
 - Conventional Commits: https://www.conventionalcommits.org/
 - Semantic Versioning: https://semver.org/
+- GitHub CLI Documentation: https://cli.github.com/manual/

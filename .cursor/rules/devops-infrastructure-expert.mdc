@@ -290,9 +290,181 @@ export const logger = createLogger({
 - Rate limiting
 - IP whitelisting for admin endpoints
 
+## GitHub Actions and Branch Protection
+
+### Status Check Naming Convention
+
+**CRITICAL**: When creating or modifying GitHub Actions workflows, ensure status check names match branch protection requirements.
+
+- GitHub status check context names use the job's `name:` field, NOT `workflow-name / job-name`
+- The job's `name:` field (in each job definition) is what appears as the status check context
+- The workflow `name:` field is only used for display purposes in some UI views
+
+**Example**:
+```yaml
+# .github/workflows/ci.yml
+name: CI  # Workflow name (for display)
+
+jobs:
+  lint:
+    name: Lint  # Status check context will be "Lint" (not "CI / Lint")
+    # ...
+```
+
+**Important**:
+- When renaming job `name:` fields, you MUST update branch protection rules
+- Use GitHub CLI (`gh`) to update branch protection after workflow changes
+- Always verify status check names match: `gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[].name'`
+- Status check names are case-sensitive and must match exactly
+
+### Updating Branch Protection After Workflow Changes
+
+When workflow names or job names change:
+
+```bash
+# Update main branch protection
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "Lint",
+    "Type Check",
+    "Test",
+    "Build",
+    "E2E Tests",
+    "Security Scan",
+    "Validate Commit Messages",
+    "PR Checks"
+  ]
+}
+EOF
+```
+
+### Best Practices
+
+- Use consistent workflow and job naming
+- Document status check names in workflow comments
+- Update branch protection immediately after workflow changes
+- Verify status checks appear correctly in PRs after changes
+
+## GitHub Actions Usage Limits and Optimization
+
+### Free Tier Limits
+
+**Private Repositories**:
+- **2,000 minutes/month** for free accounts
+- **500 MB storage** for artifacts
+- **500 MB bandwidth** per month
+- Jobs timeout after **6 hours** (default)
+
+**Public Repositories**:
+- **Unlimited minutes** ✅
+- **Unlimited storage** ✅
+- **Unlimited bandwidth** ✅
+
+### Current Optimizations
+
+**1. Timeouts on All Jobs**:
+- **Lint**: 10 minutes
+- **Type Check**: 10 minutes
+- **Test**: 15 minutes
+- **Build**: 20 minutes
+- **E2E Tests**: 30 minutes
+- **Security Scan**: 10 minutes
+- **Commit Message Validation**: 5 minutes
+- **PR Checks**: 5 minutes
+- **PR Summary**: 2 minutes
+
+**2. Removed Paid Features**:
+- ❌ **Dependency Review** (requires GitHub Advanced Security for private repos)
+- ❌ **CodeQL Analysis** (requires GitHub Advanced Security for private repos)
+- ✅ **npm audit** (always free, kept)
+
+**3. Optimized E2E Tests**:
+- Only install Chromium browser (not all browsers)
+- Only run on PRs and main/develop branches
+- Added 30-minute timeout
+
+**4. Made Codecov Optional**:
+- Only runs if `CODECOV_TOKEN` secret is set
+- Has 2-minute timeout
+- Won't hang if token is missing
+
+**5. Added Timeouts to Slow Steps**:
+- Playwright browser installation: 5 minutes
+- TruffleHog secret scanning: 5 minutes
+- Codecov upload: 2 minutes
+
+### Typical Usage Per Run
+
+- **Lint**: ~2-3 minutes
+- **Type Check**: ~1-2 minutes
+- **Test**: ~3-5 minutes
+- **Build**: ~5-8 minutes
+- **E2E**: ~10-15 minutes (only on PRs/main/develop)
+- **Security**: ~2-3 minutes
+- **PR Checks**: ~1-2 minutes
+
+**Total per PR**: ~25-40 minutes (with E2E) or ~15-20 minutes (without E2E)
+
+### Monthly Estimates
+
+- **~50 PRs/month** = ~1,250-2,000 minutes (within free tier)
+- **~100 PRs/month** = ~2,500-4,000 minutes (exceeds free tier)
+
+### Monitoring Usage
+
+**Check Your Usage**:
+1. Go to your repository on GitHub
+2. Click **Settings** → **Actions** → **Usage**
+3. View your monthly minutes consumption
+
+### If You Exceed Limits
+
+**Options**:
+1. **Make repository public** (unlimited minutes)
+2. **Upgrade to GitHub Pro** ($4/month):
+   - 3,000 minutes/month for private repos
+   - Additional minutes: $0.008/minute
+3. **Optimize further**:
+   - Skip E2E tests on draft PRs
+   - Run E2E tests only on main/develop
+   - Use matrix builds more efficiently
+   - Cache more aggressively
+
+### Troubleshooting Hangs
+
+**Common Causes**:
+1. **Missing secrets** (Codecov, etc.) - Now handled with conditionals
+2. **Network issues** - Timeouts prevent infinite waits
+3. **Database service slow to start** - Health checks help
+4. **Playwright browser download** - Now only installs Chromium
+
+**If Actions Still Hang**:
+1. Check the Actions tab for which step is hanging
+2. Look at the logs to see where it's stuck
+3. Check if you've hit your usage limit
+4. Verify all required secrets are set
+
+### Best Practices to Save Minutes
+
+- ✅ Use caching (already configured)
+- ✅ Run E2E tests only when needed
+- ✅ Use job dependencies to avoid redundant work
+- ✅ Skip jobs on draft PRs (optional)
+
+### Best Practices to Avoid Hangs
+
+- ✅ All jobs have timeouts (done)
+- ✅ Optional steps check for secrets (done)
+- ✅ Database services have health checks (done)
+- ✅ Continue-on-error for non-critical steps (done)
+
 ## Collaboration
 
 - Work with Backend Expert for deployment configuration
 - Coordinate with Security Expert for infrastructure security
 - Consult Performance Expert for optimization
+- Coordinate with Git Workflow Enforcement for branch protection updates
 - Ensure all environments are properly configured

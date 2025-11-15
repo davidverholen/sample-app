@@ -14,28 +14,21 @@ export default async function DashboardPage() {
       {/* Skip Navigation Link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg"
       >
         Skip to main content
       </a>
 
       {/* ARIA Live Region for Status Updates */}
-      <div
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-        id="status-announcements"
-      />
+      <div aria-live="polite" aria-atomic="true" className="sr-only" id="status-announcements" />
 
       <header className="border-b border-border">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <span className="font-mono text-lg font-bold text-primary">
-              {'<DevSaaS />'}
-            </span>
+            <span className="font-mono text-lg font-bold text-primary">{'<DevSaaS />'}</span>
           </Link>
           <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden items-center gap-4 md:flex">
               <ThemeToggle />
               <LogoutButton />
             </div>
@@ -60,40 +53,30 @@ export default async function DashboardPage() {
           </div>
 
           {/* User Info Card */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-card rounded-lg border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
+            <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
               <User className="h-5 w-5 text-primary" aria-hidden="true" />
               Account Information
             </h2>
             <div className="space-y-4">
-              <div className="rounded-md bg-muted/50 p-4 border border-border">
+              <div className="bg-muted/50 rounded-md border border-border p-4">
                 <div className="space-y-3 font-mono text-sm">
                   <div className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span className="text-muted-foreground min-w-[80px]">
-                      Email:
-                    </span>
+                    <span className="min-w-[80px] text-muted-foreground">Email:</span>
                     <span className="text-foreground">{session.user.email}</span>
                   </div>
                   {session.user.name && (
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      <span className="text-muted-foreground min-w-[80px]">
-                        Name:
-                      </span>
-                      <span className="text-foreground">
-                        {session.user.name}
-                      </span>
+                      <span className="min-w-[80px] text-muted-foreground">Name:</span>
+                      <span className="text-foreground">{session.user.name}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2">
                     <Key className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span className="text-muted-foreground min-w-[80px]">
-                      User ID:
-                    </span>
-                    <span className="text-foreground break-all">
-                      {session.user.id}
-                    </span>
+                    <span className="min-w-[80px] text-muted-foreground">User ID:</span>
+                    <span className="break-all text-foreground">{session.user.id}</span>
                   </div>
                 </div>
               </div>
@@ -101,49 +84,43 @@ export default async function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="bg-card rounded-lg border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
+              <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
                 <Zap className="h-5 w-5 text-primary" aria-hidden="true" />
                 Quick Actions
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors">
+                <div className="hover:bg-muted/50 flex items-center justify-between rounded p-2 transition-colors">
                   <span className="text-muted-foreground">API Status</span>
-                  <span className="font-mono text-xs text-green-500">
-                    Online
-                  </span>
+                  <span className="font-mono text-xs text-green-500">Online</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors">
+                <div className="hover:bg-muted/50 flex items-center justify-between rounded p-2 transition-colors">
                   <span className="text-muted-foreground">Database</span>
-                  <span className="font-mono text-xs text-green-500">
-                    Connected
-                  </span>
+                  <span className="font-mono text-xs text-green-500">Connected</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded hover:bg-muted/50 transition-colors">
+                <div className="hover:bg-muted/50 flex items-center justify-between rounded p-2 transition-colors">
                   <span className="text-muted-foreground">Session</span>
                   <span className="font-mono text-xs text-primary">Active</span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <div className="bg-card rounded-lg border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
+              <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
                 <BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />
                 System Info
               </h3>
-              <div className="space-y-2 text-sm font-mono">
-                <div className="flex items-center justify-between p-2 rounded">
+              <div className="space-y-2 font-mono text-sm">
+                <div className="flex items-center justify-between rounded p-2">
                   <span className="text-muted-foreground">Environment</span>
-                  <span className="text-foreground">
-                    {process.env.NODE_ENV || 'development'}
-                  </span>
+                  <span className="text-foreground">{process.env.NODE_ENV || 'development'}</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded">
+                <div className="flex items-center justify-between rounded p-2">
                   <span className="text-muted-foreground">Framework</span>
                   <span className="text-foreground">Next.js 14</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded">
+                <div className="flex items-center justify-between rounded p-2">
                   <span className="text-muted-foreground">Runtime</span>
                   <span className="text-foreground">Node.js</span>
                 </div>
@@ -152,8 +129,8 @@ export default async function DashboardPage() {
           </div>
 
           {/* Code Example */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-card rounded-lg border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
               <Code className="h-5 w-5 text-primary" aria-hidden="true" />
               Example API Call
             </h3>
@@ -173,44 +150,38 @@ console.log(userData);`}
           </div>
 
           {/* Developer Resources */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-card rounded-lg border border-border p-6 shadow-sm transition-shadow hover:shadow-md">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
               <BookOpen className="h-5 w-5 text-primary" aria-hidden="true" />
               Developer Resources
             </h3>
-            <div className="grid md:grid-cols-3 gap-4 text-sm">
+            <div className="grid gap-4 text-sm md:grid-cols-3">
               <a
                 href="https://nextjs.org/docs"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-3 rounded border border-border hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/50 rounded border border-border p-3 transition-colors"
               >
-                <div className="font-semibold mb-1">Next.js Docs</div>
-                <div className="text-xs text-muted-foreground">
-                  Official documentation
-                </div>
+                <div className="mb-1 font-semibold">Next.js Docs</div>
+                <div className="text-xs text-muted-foreground">Official documentation</div>
               </a>
               <a
                 href="https://www.prisma.io/docs"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-3 rounded border border-border hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/50 rounded border border-border p-3 transition-colors"
               >
-                <div className="font-semibold mb-1">Prisma Docs</div>
-                <div className="text-xs text-muted-foreground">
-                  Database toolkit
-                </div>
+                <div className="mb-1 font-semibold">Prisma Docs</div>
+                <div className="text-xs text-muted-foreground">Database toolkit</div>
               </a>
               <a
                 href="https://next-auth.js.org"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-3 rounded border border-border hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/50 rounded border border-border p-3 transition-colors"
               >
-                <div className="font-semibold mb-1">NextAuth.js</div>
-                <div className="text-xs text-muted-foreground">
-                  Authentication
-                </div>
+                <div className="mb-1 font-semibold">NextAuth.js</div>
+                <div className="text-xs text-muted-foreground">Authentication</div>
               </a>
             </div>
           </div>
@@ -219,4 +190,3 @@ console.log(userData);`}
     </div>
   )
 }
-
