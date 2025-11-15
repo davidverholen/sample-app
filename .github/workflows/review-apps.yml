@@ -101,23 +101,9 @@ jobs:
           attempt=0
 
           while [ $attempt -lt $max_attempts ]; do
-            # Try to execute a simple SQL query using Prisma
-            # This is the most reliable way to test database connectivity
-            SQL_OUTPUT=$(npx prisma db execute --stdin <<< "SELECT 1;" 2>&1)
-            SQL_EXIT_CODE=$?
-            
-            # Check if the query succeeded (exit code 0 and output contains "1" or success indicators)
-            if [ $SQL_EXIT_CODE -eq 0 ]; then
-              if echo "$SQL_OUTPUT" | grep -qE "(1|Query Result|success)"; then
-                echo "✅ Database is ready (connection verified)"
-                exit 0
-              fi
-            fi
-            
-            # Also try to validate Prisma schema (this checks database connection)
-            VALIDATE_OUTPUT=$(npx prisma validate 2>&1)
-            if echo "$VALIDATE_OUTPUT" | grep -qE "(validated|successfully|The schema is valid)"; then
-              echo "✅ Database connection validated"
+            # Use Node.js script to test database connection (most reliable)
+            if node scripts/test-db-connection.js 2>&1; then
+              echo "✅ Database is ready (connection verified)"
               exit 0
             fi
             
@@ -127,10 +113,6 @@ jobs:
             if [ $((attempt % 5)) -eq 0 ]; then
               echo "Attempt $attempt/$max_attempts: Still waiting..."
               echo "  (New Supabase projects can take 1-5 minutes to initialize)"
-              if [ $attempt -ge 10 ]; then
-                echo "  Last connection attempt output:"
-                echo "$SQL_OUTPUT" | tail -5 || echo "  (No output available)"
-              fi
             else
               echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
             fi
