@@ -51,19 +51,18 @@ async function createSchema() {
   let resolvedHost = hostname
   try {
     console.log(`🔍 Resolving hostname to IPv4: ${hostname}`)
-    const addresses = await dns.resolve4(hostname)
-    if (addresses.length > 0) {
-      resolvedHost = addresses[0]
-      console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
-      // Replace hostname with IPv4 address in connection string
-      urlObj.hostname = resolvedHost
-      databaseUrl = urlObj.toString()
-    } else {
-      console.warn(`⚠️  No IPv4 address found for ${hostname}, using hostname as-is`)
-    }
+    // Use dns.lookup with family: 4 to force IPv4 resolution
+    // This works better than resolve4 when both IPv4 and IPv6 exist
+    const { address } = await dns.lookup(hostname, { family: 4 })
+    resolvedHost = address
+    console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
+    // Replace hostname with IPv4 address in connection string
+    urlObj.hostname = resolvedHost
+    databaseUrl = urlObj.toString()
   } catch (resolveError) {
     console.warn(`⚠️  DNS resolution failed: ${resolveError.message}`)
     console.warn(`   Using hostname as-is (may fail if IPv6 is not available)`)
+    console.warn(`   Error details: ${resolveError.code || 'unknown'}`)
   }
 
   // Create pg Client with explicit connection string
