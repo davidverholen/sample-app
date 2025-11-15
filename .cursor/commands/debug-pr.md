@@ -241,8 +241,30 @@ gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failu
    # View workflow files changed in PR
    gh pr diff --name-only | grep "\.github/workflows"
 
-   # Validate workflow syntax locally
-   act workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+   # Validate workflow syntax locally with act (if available)
+   if command -v act &> /dev/null || [ -f "./bin/act" ]; then
+     ACT_CMD=$(command -v act || echo "./bin/act")
+
+     # Test workflow syntax
+     $ACT_CMD workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+
+     # Or run a specific job locally for fast feedback
+     # Create event payload
+     cat > /tmp/test-event.json << EOF
+   {
+   "pull_request": {"number": $PR_NUMBER},
+   "head_ref": "$BRANCH_NAME"
+   }
+   EOF
+
+     # Run specific job
+     $ACT_CMD -j "deploy-preview" \
+       --secret-file .secrets \
+       -e /tmp/test-event.json \
+       -W .github/workflows/review-apps.yml
+   else
+     echo "⚠️  act not installed - install from https://github.com/nektos/act for local testing"
+   fi
    ```
 
 2. **Check Secrets**:
@@ -543,6 +565,65 @@ Based on the RCA document, implement the recommended solution:
 
 ### Step 3: Reproduce and Test Locally
 
+**Option A: Test with `act` (Recommended for workflow debugging)**
+
+If `act` is installed, you can run GitHub Actions workflows locally for fast feedback:
+
+```bash
+# Checkout the PR branch
+gh pr checkout $PR_NUMBER
+
+# Check if act is available
+if command -v act &> /dev/null || [ -f "./bin/act" ]; then
+  ACT_CMD=$(command -v act || echo "./bin/act")
+
+  # Create event payload for PR
+  cat > /tmp/pr-event.json << EOF
+{
+  "pull_request": {
+    "number": $PR_NUMBER
+  },
+  "head_ref": "$BRANCH_NAME"
+}
+EOF
+
+  # Get workflow file name from failed run
+  WORKFLOW_FILE=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+  WORKFLOW_PATH=$(find .github/workflows -name "*${WORKFLOW_FILE}*" -o -name "*.yml" | head -1)
+
+  # Get failing job name
+  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.[] | select(.conclusion == "failure") | .name' | head -1)
+
+  # Create secrets file (use actual secrets from environment or GitHub)
+  # Note: Never commit secrets file - add to .gitignore
+  cat > .secrets << EOF
+# Add your secrets here (one per line: KEY=value)
+# Or use -s flag to pass secrets directly
+EOF
+
+  echo "🧪 Running workflow locally with act..."
+  echo "   Workflow: $WORKFLOW_PATH"
+  echo "   Job: $FAILING_JOB"
+  echo ""
+
+  # Run the specific failing job
+  $ACT_CMD -j "$FAILING_JOB" \
+    --secret-file .secrets \
+    -e /tmp/pr-event.json \
+    -W "$WORKFLOW_PATH" \
+    2>&1 | tee /tmp/act-debug.log
+
+  echo ""
+  echo "📋 Act output saved to /tmp/act-debug.log"
+  echo "🔍 Review the output above for errors"
+else
+  echo "⚠️  act not found. Install from: https://github.com/nektos/act"
+  echo "   Or use Option B below for manual testing"
+fi
+```
+
+**Option B: Manual Local Testing**
+
 ```bash
 # Checkout the PR branch
 gh pr checkout $PR_NUMBER
@@ -602,8 +683,31 @@ gh run watch
 # Check workflow file syntax
 yamllint .github/workflows/*.yml
 
-# Validate workflow locally (if act is installed)
-act workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+# Validate workflow locally with act (if installed)
+if command -v act &> /dev/null || [ -f "./bin/act" ]; then
+  ACT_CMD=$(command -v act || echo "./bin/act")
+
+  # Dry run to validate syntax
+  $ACT_CMD workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+
+  # Run specific job locally for fast feedback
+  # Create PR event payload
+  cat > /tmp/pr-event.json << EOF
+{
+  "pull_request": {"number": $PR_NUMBER},
+  "head_ref": "$BRANCH_NAME"
+}
+EOF
+
+  # Run failing job locally
+  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.[] | select(.conclusion == "failure") | .name' | head -1)
+  $ACT_CMD -j "$FAILING_JOB" \
+    --secret-file .secrets \
+    -e /tmp/pr-event.json \
+    -W .github/workflows/$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName' | tr ' ' '-' | tr '[:upper:]' '[:lower:]').yml
+else
+  echo "⚠️  Install act for local workflow testing: https://github.com/nektos/act"
+fi
 
 # Check for common workflow issues
 gh run view $FAILED_RUN --log | grep -i "permission\|secret\|timeout\|resource"
@@ -694,15 +798,99 @@ npm test -- --coverage --coverageReporters=text
 - [ ] Verified CI passes after fix
 - [ ] Documented the issue and solution (if non-trivial)
 
+## Local Debugging with `act`
+
+**Fast Feedback Loop**: Use `act` to run GitHub Actions workflows locally for instant feedback without waiting for CI.
+
+### Setup `act`
+
+```bash
+# Install act (if not already installed)
+# Option 1: Using the install script
+curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+
+# Option 2: Download binary to ./bin/act
+mkdir -p bin
+curl -L https://github.com/nektos/act/releases/latest/download/act_Linux_x86_64.tar.gz | tar -xz -C bin act
+
+# Configure act to use medium image (recommended)
+mkdir -p ~/.config/act
+echo "-P ubuntu-latest=catthehacker/ubuntu:act-latest" > ~/.config/act/actrc
+```
+
+### Create Secrets File
+
+```bash
+# Create .secrets file (add to .gitignore!)
+cat > .secrets << EOF
+SUPABASE_ACCESS_TOKEN=your-token-here
+SUPABASE_PROJECT_REF=your-project-ref
+SUPABASE_DB_PASSWORD=your-password
+VERCEL_TOKEN=your-token
+VERCEL_ORG_ID=your-org-id
+VERCEL_PROJECT_ID=your-project-id
+EOF
+
+# Ensure .secrets is in .gitignore
+echo ".secrets" >> .gitignore
+```
+
+### Run Workflow Locally
+
+```bash
+# Get workflow and job info from failed run
+FAILED_RUN=$(gh run list --branch "$BRANCH_NAME" --json databaseId,conclusion --jq '.[] | select(.conclusion == "failure") | .databaseId' | head -1)
+WORKFLOW_NAME=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName')
+FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.[] | select(.conclusion == "failure") | .name' | head -1)
+
+# Find workflow file
+WORKFLOW_FILE=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | xargs grep -l "name:.*$WORKFLOW_NAME" | head -1)
+
+# Create PR event payload
+cat > /tmp/pr-event.json << EOF
+{
+  "pull_request": {"number": $PR_NUMBER},
+  "head_ref": "$BRANCH_NAME"
+}
+EOF
+
+# Run with act
+ACT_CMD=$(command -v act || echo "./bin/act")
+$ACT_CMD -j "$FAILING_JOB" \
+  --secret-file .secrets \
+  -e /tmp/pr-event.json \
+  -W "$WORKFLOW_FILE" \
+  2>&1 | tee /tmp/act-debug.log
+
+# Review output
+echo "📋 Full output saved to /tmp/act-debug.log"
+grep -E "Error|Failed|❌|✅" /tmp/act-debug.log | head -20
+```
+
+### Act Tips
+
+- **Use `--dryrun`** to validate workflow syntax without executing
+- **Use `-j <job-name>`** to run only the failing job (faster)
+- **Use `--secret-file`** to pass secrets securely
+- **Use `-e <event-file>`** to simulate PR events
+- **Monitor output** with `tee` to save logs while watching
+
+### Limitations
+
+- Some actions may not work locally (e.g., GitHub API actions)
+- Docker must be running
+- Secrets must be provided manually
+- Some environment differences may exist
+
 ## Best Practices
 
-- **Reproduce locally first**: Don't guess - reproduce the exact failure
+- **Reproduce locally first**: Use `act` to test workflows locally before pushing
 - **Read full error logs**: Don't just look at summary - read complete error messages
 - **Check recent changes**: Review what changed in the PR that might have caused the failure
-- **Test incrementally**: Fix one issue at a time, test, then move to next
+- **Test incrementally**: Fix one issue at a time, test with `act`, then move to next
 - **Document findings**: If the issue is complex, document it for future reference
 - **Use proper commit messages**: Follow Conventional Commits when fixing issues
-- **Verify before pushing**: Always test locally before pushing fixes
+- **Verify before pushing**: Always test locally with `act` before pushing fixes
 
 ## Quick Reference
 

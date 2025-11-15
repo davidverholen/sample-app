@@ -22,10 +22,6 @@ if (!process.env.DATABASE_URL) {
 
 const { PrismaClient } = require('@prisma/client')
 
-const prisma = new PrismaClient({
-  log: ['error', 'warn'],
-})
-
 async function createSchema() {
   const schemaName = process.env.SCHEMA_NAME
   const databaseUrl = process.env.DATABASE_URL
@@ -40,6 +36,18 @@ async function createSchema() {
     console.error('❌ Error: DATABASE_URL environment variable is not set')
     process.exit(1)
   }
+
+  // Create Prisma Client with explicit DATABASE_URL to avoid environment variable timing issues
+  // This ensures Prisma uses the correct connection string even if process.env.DATABASE_URL
+  // isn't available when the module is first loaded
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+    log: ['error', 'warn'],
+  })
 
   // Log connection info (without password)
   const safeUrl = databaseUrl.replace(/:[^:@]+@/, ':***@')
@@ -58,9 +66,10 @@ async function createSchema() {
     console.log(`✅ Schema created successfully: ${schemaName}`)
 
     // Verify schema was created
+    // Note: $queryRawUnsafe doesn't support parameterized queries ($1 syntax)
+    // Use string interpolation with proper escaping for Transaction Mode compatibility
     const schemas = await prisma.$queryRawUnsafe(
-      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
-      schemaName
+      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = '${schemaName.replace(/'/g, "''")}'`
     )
 
     if (Array.isArray(schemas) && schemas.length > 0) {
