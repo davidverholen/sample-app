@@ -321,7 +321,19 @@ DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432
 **Connection String for CI/CD**:
 ```bash
 # Use Transaction Mode for GitHub Actions
-DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require"
+# REQUIRED: Add ?pgbouncer=true parameter for Transaction Mode
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true"
+```
+
+**Transaction Mode Connection String Parameters**:
+- `?pgbouncer=true` - **REQUIRED** for Transaction Mode (port 6543). Tells Prisma to disable prepared statements
+- `?connection_limit=1` - Recommended for serverless/CI environments to limit connection pool size
+- `?connect_timeout=30` - Optional: Increase timeout for serverless cold starts (default is 5 seconds)
+
+**Complete Transaction Mode Connection String**:
+```bash
+# Recommended format for GitHub Actions/CI/CD
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
 ```
 
 **Prisma Schema Configuration**:
@@ -332,6 +344,23 @@ datasource db {
   directUrl = env("DIRECT_URL")    // Direct connection (port 5432) for migrations
 }
 ```
+
+**PrismaClient Configuration for Transaction Mode**:
+```typescript
+// Prisma automatically handles Transaction Mode when pgbouncer=true is in connection string
+// No special PrismaClient configuration needed - Prisma detects pgbouncer=true and disables prepared statements
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+  // Prisma automatically disables prepared statements when pgbouncer=true is in DATABASE_URL
+})
+```
+
+**Important Notes**:
+- **CRITICAL**: Transaction Mode (port 6543) requires `?pgbouncer=true` parameter in connection string
+- Without `pgbouncer=true`, Prisma will try to use prepared statements which Transaction Mode doesn't support
+- Prisma automatically detects `pgbouncer=true` and disables prepared statements
+- Use `$executeRawUnsafe()` or `$queryRawUnsafe()` for raw SQL queries (they don't use prepared statements)
+- Regular Prisma queries work fine with Transaction Mode when `pgbouncer=true` is set
 
 **Schema Management**:
 - Use Supabase CLI for schema migrations: `supabase db push`
@@ -345,6 +374,7 @@ datasource db {
 - Keep migrations in sync between Supabase and Prisma
 - Generate TypeScript types from Supabase schema regularly
 - Use Transaction Mode (port 6543) for CI/CD and serverless environments
+- **Always include `?pgbouncer=true`** when using Transaction Mode (port 6543)
 - Use Direct URL for migrations when possible
 
 ### Supabase-Specific Features

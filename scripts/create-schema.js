@@ -91,10 +91,15 @@ async function createSchema() {
       console.error('   4. Supabase project might not allow direct connections')
       console.error('')
       console.error('🔧 Troubleshooting:')
-      console.error('   - Verify DATABASE_URL format is correct')
+      console.error(
+        '   - Verify DATABASE_URL format is correct (should include ?pgbouncer=true for Transaction Mode)'
+      )
       console.error('   - Check if password needs URL encoding (special characters)')
       console.error('   - Verify database host is accessible from GitHub Actions')
       console.error('   - Check Supabase project settings for connection restrictions')
+      console.error(
+        '   - Ensure connection string includes: ?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30'
+      )
     } else if (error.message.includes('authentication') || error.message.includes('password')) {
       console.error('')
       console.error('💡 This error typically indicates:')

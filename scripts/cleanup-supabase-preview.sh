@@ -77,6 +77,9 @@ fi
 # Use Transaction Mode pooling (port 6543) for external IPs like GitHub Actions runners
 # Protocol: postgres:// (not postgresql://) for Transaction Mode
 # Username: postgres (NO project ref prefix) for Transaction Mode
+# REQUIRED: ?pgbouncer=true parameter tells Prisma to disable prepared statements (Transaction Mode doesn't support them)
+# Recommended: ?connection_limit=1 for serverless/CI environments
+# Optional: ?connect_timeout=30 for serverless cold starts
 # Port 5432 (direct connection) is blocked by Supabase firewall for external IPs
 # URL encode the password to handle special characters
 if command -v node >/dev/null 2>&1; then
@@ -89,7 +92,7 @@ else
   ENCODED_PASSWORD="$SUPABASE_DB_PASSWORD"
   echo "⚠️  Warning: No URL encoding tool available, using password as-is"
 fi
-MAIN_DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
+MAIN_DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
 
 # Drop PostgreSQL schema using Prisma
 echo "🗑️  Dropping PostgreSQL schema: $SCHEMA_NAME"

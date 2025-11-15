@@ -670,7 +670,19 @@ supabase db pull
 # Then manually sync to Prisma schema
 
 # Use Transaction Mode for Prisma in CI/CD
-DATABASE_URL="postgres://postgres:password@db.project-ref.supabase.co:6543/postgres?sslmode=require"
+# REQUIRED: Add ?pgbouncer=true parameter for Transaction Mode
+DATABASE_URL="postgres://postgres:password@db.project-ref.supabase.co:6543/postgres?sslmode=require&pgbouncer=true"
+```
+
+**Transaction Mode Connection String Parameters**:
+- `?pgbouncer=true` - **REQUIRED** for Transaction Mode (port 6543). Prisma uses this to disable prepared statements
+- `?connection_limit=1` - Recommended for serverless/CI environments
+- `?connect_timeout=30` - Optional: Increase timeout for serverless cold starts
+
+**Complete Transaction Mode Connection String**:
+```bash
+# Recommended format for GitHub Actions/CI/CD
+DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@db.${PROJECT_REF}.supabase.co:6543/postgres?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
 ```
 
 **Prisma Configuration for Supabase**:
@@ -683,12 +695,28 @@ datasource db {
 }
 ```
 
+**PrismaClient Configuration**:
+```typescript
+// Prisma automatically handles Transaction Mode when pgbouncer=true is in connection string
+// No special configuration needed - Prisma detects pgbouncer=true and disables prepared statements
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+})
+```
+
+**Common Issues and Solutions**:
+- **"Can't reach database server" error**: Ensure `?pgbouncer=true` is in connection string for Transaction Mode
+- **Prepared statement errors**: Add `?pgbouncer=true` to connection string
+- **Connection timeouts**: Add `?connect_timeout=30` for serverless environments
+- **Connection pool exhaustion**: Add `?connection_limit=1` for serverless/CI environments
+
 **Best Practices**:
 - Use Supabase CLI for schema management
 - Use Prisma for type-safe queries
 - Keep migrations in sync
 - Generate types from Supabase schema
 - Use Transaction Mode (port 6543) for CI/CD and serverless
+- **Always include `?pgbouncer=true`** when using Transaction Mode (port 6543)
 - Use Direct URL for migrations when possible
 
 ### Supabase Backup and Recovery
