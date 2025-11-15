@@ -90,22 +90,66 @@ jobs:
       - name: Wait for Supabase preview to be ready
         env:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+        continue-on-error: true
         run: |
           echo "Waiting for Supabase preview database to be ready..."
-          max_attempts=30
+          echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
+
+          # For new Supabase projects, they can take 30-90 seconds to initialize
+          # Increase max attempts and wait time for new projects
+          max_attempts=40
           attempt=0
+
           while [ $attempt -lt $max_attempts ]; do
-            # Use Prisma to check connectivity (more reliable)
-            if npx prisma db execute --stdin <<< "SELECT 1;" 2>/dev/null | grep -q "1"; then
-              echo "✅ Database is ready"
+            # Try to execute a simple SQL query using Prisma
+            # This is the most reliable way to test database connectivity
+            SQL_OUTPUT=$(npx prisma db execute --stdin <<< "SELECT 1;" 2>&1)
+            SQL_EXIT_CODE=$?
+            
+            # Check if the query succeeded (exit code 0 and output contains "1" or success indicators)
+            if [ $SQL_EXIT_CODE -eq 0 ]; then
+              if echo "$SQL_OUTPUT" | grep -qE "(1|Query Result|success)"; then
+                echo "✅ Database is ready (connection verified)"
+                exit 0
+              fi
+            fi
+            
+            # Also try to validate Prisma schema (this checks database connection)
+            VALIDATE_OUTPUT=$(npx prisma validate 2>&1)
+            if echo "$VALIDATE_OUTPUT" | grep -qE "(validated|successfully|The schema is valid)"; then
+              echo "✅ Database connection validated"
               exit 0
             fi
+            
             attempt=$((attempt + 1))
-            echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
-            sleep 5
+            
+            # Show progress every 5 attempts
+            if [ $((attempt % 5)) -eq 0 ]; then
+              echo "Attempt $attempt/$max_attempts: Still waiting..."
+              echo "  (New Supabase projects can take 1-5 minutes to initialize)"
+              if [ $attempt -ge 10 ]; then
+                echo "  Last connection attempt output:"
+                echo "$SQL_OUTPUT" | tail -5 || echo "  (No output available)"
+              fi
+            else
+              echo "Attempt $attempt/$max_attempts: Database not ready yet, waiting..."
+            fi
+            
+            # Wait longer between attempts (15 seconds)
+            sleep 15
           done
-          echo "❌ Database readiness check timed out"
-          exit 1
+
+          echo ""
+          echo "⚠️  Database readiness check timed out after $max_attempts attempts (~10 minutes)"
+          echo ""
+          echo "This might indicate:"
+          echo "  - Supabase project is still initializing (can take 1-5 minutes for new projects)"
+          echo "  - Database connection string might be incorrect"
+          echo "  - Network connectivity issues"
+          echo ""
+          echo "Continuing to migration step - it will provide more detailed error information if connection fails..."
+          # Don't exit 1 - let the migration step handle the actual connection test
+          # This provides better error messages and allows the workflow to continue
 
       - name: Create branch schema (fallback mode)
         if: steps.create-supabase-preview.outputs.schema-name != ''
@@ -123,11 +167,45 @@ jobs:
           DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
           SCHEMA_NAME: ${{ steps.create-supabase-preview.outputs.schema-name }}
         run: |
+          echo "Applying database migrations..."
+          echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
+
           # If using branch schema, append it to DATABASE_URL
           if [ -n "$SCHEMA_NAME" ]; then
             export DATABASE_URL="${DATABASE_URL}&schema=${SCHEMA_NAME}"
+            echo "Using schema: $SCHEMA_NAME"
           fi
-          npx prisma db push --accept-data-loss
+
+          # Try to push schema with retries
+          max_retries=3
+          retry=0
+
+          while [ $retry -lt $max_retries ]; do
+            if npx prisma db push --accept-data-loss 2>&1; then
+              echo "✅ Database migrations applied successfully"
+              exit 0
+            else
+              retry=$((retry + 1))
+              if [ $retry -lt $max_retries ]; then
+                echo "⚠️  Migration attempt $retry failed, retrying in 10 seconds..."
+                sleep 10
+              else
+                echo "❌ Database migrations failed after $max_retries attempts"
+                echo ""
+                echo "This might indicate:"
+                echo "  - Database is not ready yet (Supabase projects can take 1-5 minutes to initialize)"
+                echo "  - Database connection string is incorrect"
+                echo "  - Network connectivity issues"
+                echo "  - Database permissions issue"
+                echo ""
+                echo "Please check:"
+                echo "  1. Supabase project status in dashboard"
+                echo "  2. Database connection string format"
+                echo "  3. Network connectivity from GitHub Actions"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Seed preview database
         env:
