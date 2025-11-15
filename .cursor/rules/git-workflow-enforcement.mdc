@@ -109,21 +109,23 @@ update: fix login bug
 
 ### Branch Types and Naming
 
-1. **Feature Branches**: `feature/issue-number-short-description`
-   - Example: `feature/123-user-authentication`
-   - Example: `feature/456-dashboard-analytics`
+1. **Feature Branches**: `feature/issue-number-short-description` or `feature/short-description`
+   - Preferred: `feature/123-user-authentication` (with issue number)
+   - Acceptable: `feature/user-authentication` (without issue number)
    - MUST branch from `develop`
-   - MUST include issue number
+   - SHOULD include issue number (recommended for traceability)
 
-2. **Bugfix Branches**: `bugfix/issue-number-short-description`
-   - Example: `bugfix/789-login-error`
+2. **Bugfix Branches**: `bugfix/issue-number-short-description` or `bugfix/short-description`
+   - Preferred: `bugfix/789-login-error` (with issue number)
+   - Acceptable: `bugfix/login-error` (without issue number)
    - MUST branch from `develop`
-   - MUST include issue number
+   - SHOULD include issue number (recommended for traceability)
 
-3. **Hotfix Branches**: `hotfix/issue-number-short-description`
-   - Example: `hotfix/999-security-patch`
+3. **Hotfix Branches**: `hotfix/issue-number-short-description` or `hotfix/short-description`
+   - Preferred: `hotfix/999-security-patch` (with issue number)
+   - Acceptable: `hotfix/security-patch` (without issue number)
    - MUST branch from `main`
-   - MUST include issue number
+   - SHOULD include issue number (recommended for traceability)
 
 4. **Release Branches**: `release/v1.2.3` or `release/v1.2.3-rc.1`
    - MUST follow semantic versioning
@@ -133,7 +135,7 @@ update: fix login bug
 
 - NEVER commit directly to `main` or `develop`
 - ALWAYS create a feature/bugfix/hotfix branch for changes
-- ALWAYS include issue number in branch name
+- SHOULD include issue number in branch name (recommended for traceability)
 - ALWAYS use kebab-case for branch names
 - NEVER use spaces or special characters (except hyphens)
 
