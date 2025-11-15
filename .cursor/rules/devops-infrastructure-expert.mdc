@@ -1000,6 +1000,523 @@ For Supabase database and project management:
 
 **Full Documentation**: See the [Supabase Database Management](#supabase-database-management) section for complete setup, migration workflows, local development, backup/recovery, monitoring, and troubleshooting guides.
 
+## Review Apps / Preview Environments
+
+Review apps (also called preview deployments) automatically create isolated environments for each pull request, allowing teams to test changes in a production-like environment before merging.
+
+### Overview
+
+Review apps combine:
+- **Vercel Preview Deployments**: Automatic preview deployments for PR branches
+- **Supabase Preview Instances**: Isolated database instances per PR
+- **E2E Testing**: Automated tests against preview deployments
+- **Automatic Cleanup**: Resource cleanup when PRs are closed
+
+### Architecture
+
+```yaml
+# .github/workflows/review-apps.yml
+name: Review Apps
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy-preview:
+    # 1. Create Supabase preview instance
+    # 2. Apply database migrations
+    # 3. Seed preview database
+    # 4. Deploy to Vercel preview
+    # 5. Set preview environment variables
+    # 6. Comment PR with preview URL
+
+  e2e-preview:
+    needs: deploy-preview
+    # 1. Wait for Vercel deployment
+    # 2. Run E2E tests against preview
+    # 3. Upload test results
+    # 4. Comment PR with results
+
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    # 1. Delete Supabase preview instance
+    # 2. Vercel auto-cleans preview deployments
+```
+
+### Supabase Preview Instance Management
+
+#### Approach 1: New Supabase Projects (Recommended for Production)
+
+Creates a new Supabase project for each preview using the Management API:
+
+**Requirements**:
+- Supabase Team plan with API access
+- `SUPABASE_ACCESS_TOKEN` with project creation permissions
+- `SUPABASE_ORG_ID` (can be derived from project details)
+
+**Implementation**:
+```bash
+# scripts/create-supabase-preview.sh
+API_URL="https://api.supabase.com/v1/projects"
+
+# Create new project
+RESPONSE=$(curl -s -X POST "$API_URL" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"preview-${BRANCH}-pr${PR_NUMBER}\",
+    \"organization_id\": \"$SUPABASE_ORG_ID\",
+    \"region\": \"us-east-1\",
+    \"plan\": \"free\"
+  }")
+
+# Extract project ID and connection details
+PROJECT_ID=$(echo "$RESPONSE" | jq -r '.id')
+DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${PASSWORD}@${HOST}:5432/postgres?sslmode=require"
+```
+
+**Pros**:
+- Complete isolation between previews
+- No risk of data conflicts
+- True branch-based databases
+
+**Cons**:
+- Requires paid Supabase plan
+- API rate limits may apply
+- Slower to create/delete (30+ seconds)
+
+#### Approach 2: Shared Database with Branch Schemas (Fallback)
+
+Uses the main Supabase project database with branch-specific schemas:
+
+**Implementation**:
+```bash
+# Use main project database
+DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
+DB_NAME="postgres"
+
+# Create branch-specific schema name
+SCHEMA_NAME="preview_${SANITIZED_BRANCH}_pr${PR_NUMBER}"
+
+# Connection string (schema created during migration)
+DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
+```
+
+**Pros**:
+- Works with free Supabase plan
+- Faster setup
+- No API rate limits
+
+**Cons**:
+- Less isolation (shared database)
+- Requires careful schema management
+- Potential for naming conflicts
+
+**Schema Management**:
+```sql
+-- Create branch-specific schema
+CREATE SCHEMA IF NOT EXISTS preview_feature_123_pr456;
+
+-- Set search path for migrations
+SET search_path TO preview_feature_123_pr456, public;
+
+-- Apply migrations to branch schema
+-- (Prisma migrations run with schema prefix)
+```
+
+### Vercel Preview Deployment
+
+#### Automatic Preview Deployments
+
+Vercel automatically creates preview deployments for:
+- Pull requests (all branches)
+- Non-production branches
+- Manual deployments
+
+#### Manual Preview Deployment in GitHub Actions
+
+```yaml
+- name: Deploy to Vercel Preview
+  env:
+    VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+    VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  run: |
+    # Deploy to preview
+    DEPLOY_OUTPUT=$(vercel --token $VERCEL_TOKEN --yes --force 2>&1)
+    
+    # Extract deployment URL
+    DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' | head -1)
+    
+    echo "preview-url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+```
+
+#### Setting Preview Environment Variables
+
+Preview deployments need dynamic environment variables:
+
+```yaml
+- name: Set Vercel preview environment variables
+  env:
+    VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+    NEXTAUTH_SECRET: ${{ steps.generate-secret.outputs.secret }}
+    PREVIEW_URL: ${{ steps.deploy.outputs.preview-url }}
+  run: |
+    # Set environment variables for preview deployments
+    echo "$DATABASE_URL" | vercel env add DATABASE_URL preview --token $VERCEL_TOKEN --yes
+    echo "$NEXTAUTH_SECRET" | vercel env add NEXTAUTH_SECRET preview --token $VERCEL_TOKEN --yes
+    echo "$PREVIEW_URL" | vercel env add NEXTAUTH_URL preview --token $VERCEL_TOKEN --yes
+    echo "$PREVIEW_URL" | vercel env add NEXT_PUBLIC_APP_URL preview --token $VERCEL_TOKEN --yes
+```
+
+**Important**: Environment variables set via CLI are scoped to `preview` environment and apply to all preview deployments.
+
+### GitHub Actions Workflow Orchestration
+
+#### Workflow Structure
+
+```yaml
+jobs:
+  deploy-preview:
+    outputs:
+      preview-url: ${{ steps.deploy.outputs.preview-url }}
+      database-url: ${{ steps.create-supabase-preview.outputs.database-url }}
+    steps:
+      - name: Create Supabase preview instance
+        id: create-supabase-preview
+        run: ./scripts/create-supabase-preview.sh ...
+      
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+        run: npx prisma db push --accept-data-loss
+      
+      - name: Deploy to Vercel Preview
+        id: deploy
+        run: vercel --token $VERCEL_TOKEN --yes --force
+
+  e2e-preview:
+    needs: deploy-preview
+    steps:
+      - name: Wait for Vercel deployment
+        env:
+          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+        run: |
+          # Wait for deployment to be ready
+          max_attempts=60
+          for i in $(seq 1 $max_attempts); do
+            if curl -f -s "$PREVIEW_URL" > /dev/null 2>&1; then
+              echo "✅ Preview ready"
+              exit 0
+            fi
+            sleep 10
+          done
+      
+      - name: Run E2E tests
+        env:
+          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+        run: npm run test:e2e
+
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    steps:
+      - name: Cleanup Supabase preview instance
+        run: ./scripts/cleanup-supabase-preview.sh ...
+```
+
+#### Output Management
+
+Use `GITHUB_OUTPUT` to pass data between steps and jobs:
+
+```bash
+# In script or step
+{
+  echo "database-url=$DATABASE_URL"
+  echo "instance-name=$INSTANCE_NAME"
+  echo "project-id=$PROJECT_ID"
+} >> "$GITHUB_OUTPUT"
+```
+
+```yaml
+# Access in later steps/jobs
+env:
+  DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+```
+
+### Required GitHub Secrets
+
+**Vercel Secrets**:
+- `VERCEL_TOKEN`: Vercel authentication token
+- `VERCEL_ORG_ID`: Vercel organization ID
+- `VERCEL_PROJECT_ID`: Vercel project ID
+
+**Supabase Secrets**:
+- `SUPABASE_ACCESS_TOKEN`: Supabase Management API access token
+- `SUPABASE_PROJECT_REF`: Main Supabase project reference ID
+- `SUPABASE_DB_PASSWORD`: Database password (for shared database approach)
+- `SUPABASE_ORG_ID`: Organization ID (optional, can be derived)
+
+**Optional**:
+- `NEXTAUTH_SECRET`: NextAuth secret (generated per preview if not provided)
+
+### Database Migration Strategy
+
+#### Preview Instance Migrations
+
+```yaml
+- name: Apply database migrations
+  env:
+    DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+  run: |
+    # For new projects: apply all migrations
+    npx prisma db push --accept-data-loss
+    
+    # For shared database with schemas: apply to branch schema
+    # (requires custom migration script with schema prefix)
+```
+
+#### Schema Prefix for Shared Database
+
+```typescript
+// Custom migration script for branch schemas
+const schemaName = process.env.PREVIEW_SCHEMA_NAME || 'public';
+
+await prisma.$executeRawUnsafe(`
+  CREATE SCHEMA IF NOT EXISTS ${schemaName};
+  SET search_path TO ${schemaName}, public;
+`);
+
+// Then run migrations
+await prisma.$executeRawUnsafe(`
+  SET search_path TO ${schemaName}, public;
+  -- Migration SQL here
+`);
+```
+
+### E2E Testing Against Previews
+
+#### Playwright Configuration
+
+```typescript
+// playwright.config.ts
+const baseURL = process.env.PREVIEW_URL || 'http://localhost:3000';
+
+export default defineConfig({
+  use: {
+    baseURL,
+  },
+  webServer: process.env.PREVIEW_URL
+    ? undefined // Don't start local server if preview URL is set
+    : {
+        command: 'npm run dev',
+        url: 'http://localhost:3000',
+      },
+});
+```
+
+#### Running E2E Tests
+
+```yaml
+- name: Run E2E tests against preview
+  env:
+    PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+    DATABASE_URL: ${{ needs.deploy-preview.outputs.database-url }}
+    NEXTAUTH_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+  run: npm run test:e2e
+```
+
+### Cleanup Strategy
+
+#### Automatic Cleanup
+
+```yaml
+cleanup-preview:
+  if: github.event.action == 'closed'
+  steps:
+    - name: Cleanup Supabase preview instance
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      run: |
+        # Delete Supabase project via API
+        curl -X DELETE \
+          "https://api.supabase.com/v1/projects/${PROJECT_ID}" \
+          -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
+        
+        # Or drop branch schema for shared database
+        # psql "$DATABASE_URL" -c "DROP SCHEMA IF EXISTS ${SCHEMA_NAME} CASCADE;"
+```
+
+**Note**: Vercel automatically cleans up preview deployments after 30 days of inactivity.
+
+### Best Practices
+
+1. **Resource Management**:
+   - Monitor Supabase project quotas
+   - Set up alerts for resource limits
+   - Periodically clean up orphaned preview instances
+
+2. **Error Handling**:
+   - Use `continue-on-error: true` for non-critical cleanup steps
+   - Implement retry logic for API calls
+   - Add health checks before proceeding
+
+3. **Performance**:
+   - Cache dependencies in GitHub Actions
+   - Use parallel jobs where possible
+   - Set appropriate timeouts for all jobs
+
+4. **Security**:
+   - Never log sensitive data (passwords, tokens)
+   - Use GitHub secrets for all credentials
+   - Rotate access tokens regularly
+
+5. **Testing**:
+   - Always run E2E tests against preview deployments
+   - Upload test artifacts for debugging
+   - Comment PRs with test results
+
+### Troubleshooting
+
+#### Preview Deployment Fails
+
+**Issue**: Vercel deployment fails
+
+**Solutions**:
+- Check Vercel project is linked correctly
+- Verify `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` secrets
+- Check Vercel deployment logs in workflow
+- Ensure build succeeds locally: `npm run build`
+
+#### Supabase Preview Instance Creation Fails
+
+**Issue**: Supabase preview instance creation fails
+
+**Solutions**:
+- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions
+- Check if using Management API approach (requires Team plan)
+- Script will fall back to shared database approach
+- Check Supabase API rate limits
+- Verify `SUPABASE_ORG_ID` is set or can be derived
+
+#### Environment Variables Not Set
+
+**Issue**: Preview deployment doesn't have correct environment variables
+
+**Solutions**:
+- Verify `vercel env add` commands succeeded
+- Check Vercel dashboard for preview environment variables
+- Ensure variables are scoped to `preview` environment
+- Wait for Vercel deployment to complete before testing
+
+#### E2E Tests Fail on Preview
+
+**Issue**: E2E tests fail against preview deployment
+
+**Solutions**:
+- Check preview URL is accessible (wait longer for deployment)
+- Verify environment variables are set correctly on Vercel
+- Check database connection (Supabase preview instance)
+- Review test logs and videos in workflow artifacts
+- Ensure preview deployment is fully ready before tests run
+
+#### Cleanup Fails
+
+**Issue**: Preview resources not cleaned up
+
+**Solutions**:
+- Check cleanup script logs in workflow
+- Vercel automatically cleans up preview deployments
+- Supabase preview instances may need manual cleanup if script fails
+- Check Supabase dashboard for orphaned projects/schemas
+- Use `continue-on-error: true` to prevent workflow failures
+
+### Official Documentation
+
+#### GitHub Actions
+
+**Pull Request Workflows**:
+- [GitHub Actions: Pull Request Events](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request)
+- [GitHub Actions: Context and Expression Syntax](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context)
+- [GitHub Actions: Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
+- [GitHub Actions: Setting Output Parameters](https://docs.github.com/en/actions/using-workflows/workflow-commands#setting-an-output-parameter)
+- [GitHub Actions: Environment Variables](https://docs.github.com/en/actions/using-workflows/workflow-commands#setting-an-environment-variable)
+
+**GitHub Scripts and Automation**:
+- [actions/github-script](https://github.com/actions/github-script) - Run GitHub API scripts in workflows
+- [GitHub REST API: Pull Requests](https://docs.github.com/en/rest/pulls/pulls)
+- [GitHub REST API: Issues](https://docs.github.com/en/rest/issues/issues)
+
+#### Vercel
+
+**Preview Deployments**:
+- [Vercel: Preview Deployments](https://vercel.com/docs/deployments/preview-deployments) - Official guide to preview deployments
+- [Vercel: Environment Variables](https://vercel.com/docs/projects/environment-variables) - Managing environment variables
+- [Vercel: CLI Reference](https://vercel.com/docs/cli) - Complete CLI documentation
+- [Vercel: CLI Commands - `vercel env`](https://vercel.com/docs/cli/env) - Managing environment variables via CLI
+- [Vercel: Git Integration](https://vercel.com/docs/deployments/git) - GitHub integration and automatic deployments
+
+**Vercel CLI Commands for Previews**:
+```bash
+# Deploy to preview
+vercel --yes --force
+
+# Set environment variable for preview
+vercel env add VARIABLE_NAME preview --token $VERCEL_TOKEN --yes
+
+# List preview deployments
+vercel ls
+
+# View preview deployment logs
+vercel logs [deployment-url]
+```
+
+**Vercel API**:
+- [Vercel REST API](https://vercel.com/docs/rest-api) - Programmatic access to Vercel
+- [Vercel: Deployments API](https://vercel.com/docs/rest-api/deployments) - Create and manage deployments
+- [Vercel: Environment Variables API](https://vercel.com/docs/rest-api/environment-variables) - Manage environment variables
+
+#### Supabase
+
+**Management API**:
+- [Supabase: Management API](https://supabase.com/docs/reference/api) - Official Management API reference
+- [Supabase: Management API - Projects](https://supabase.com/docs/reference/api/create-project) - Create and manage projects
+- [Supabase: Management API - Organizations](https://supabase.com/docs/reference/api/list-organizations) - List and manage organizations
+- [Supabase: Access Tokens](https://supabase.com/dashboard/account/tokens) - Create and manage access tokens
+
+**Database Management**:
+- [Supabase: Database Connection Strings](https://supabase.com/docs/guides/database/connecting-to-postgres) - Connection string formats
+- [Supabase: Database Schemas](https://supabase.com/docs/guides/database/tables) - Working with database schemas
+- [Supabase: Row Level Security](https://supabase.com/docs/guides/auth/row-level-security) - RLS policies for preview instances
+
+**Supabase CLI**:
+- [Supabase CLI Reference](https://supabase.com/docs/reference/cli) - Complete CLI documentation
+- [Supabase CLI: Database Commands](https://supabase.com/docs/reference/cli/supabase-db) - Database management commands
+- [Supabase: Local Development](https://supabase.com/docs/guides/cli/local-development) - Local Supabase setup
+
+**Supabase Project Management**:
+- [Supabase: Project Settings](https://supabase.com/docs/guides/platform/project-settings) - Project configuration
+- [Supabase: Database Migrations](https://supabase.com/docs/guides/database/migrations) - Migration strategies
+- [Supabase: Branching (Beta)](https://supabase.com/docs/guides/platform/branching) - Database branching feature (when available)
+
+#### Integration Patterns
+
+**GitHub Actions + Vercel**:
+- [Vercel: GitHub Actions Integration](https://vercel.com/docs/integrations/github-actions) - Official integration guide
+- [amondnet/vercel-action](https://github.com/amondnet/vercel-action) - GitHub Action for Vercel deployments
+
+**GitHub Actions + Supabase**:
+- [Supabase: CI/CD with GitHub Actions](https://supabase.com/docs/guides/cli/ci-cd) - CI/CD integration patterns
+- [Supabase: Database Migrations in CI](https://supabase.com/docs/guides/database/migrations#applying-migrations-in-ci) - Running migrations in CI
+
+### Related Documentation
+
+- See `docs/REVIEW_APPS.md` for complete review apps setup guide
+- See [Vercel (Recommended for Next.js)](#vercel-recommended-for-nextjs) for Vercel deployment details
+- See [Supabase Database Management](#supabase-database-management) for Supabase setup
+- See [GitHub Actions Usage Limits](#github-actions-usage-limits-and-optimization) for CI/CD optimization
+
 ## Collaboration
 
 - Work with Backend Expert for deployment configuration
