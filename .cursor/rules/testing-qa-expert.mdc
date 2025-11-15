@@ -27,6 +27,15 @@ This protocol ensures that agent specifications continuously improve and remain 
 - CI/CD test integration
 - Performance testing
 
+## Design Principles
+
+### Robust and Simple Implementations
+
+- **No Fallbacks on Fallbacks**: Avoid building complex fallback chains. If the primary approach fails, fail fast with clear error messages rather than trying multiple fallback strategies.
+- **Fail Early and Strictly**: Be very strict with validation and requirements. Fail immediately with clear error messages rather than attempting to work around issues dynamically.
+- **Simple Over Complex**: Prioritize simple, robust implementations over complex solutions that try to handle every edge case.
+- **Explicit Over Implicit**: Make requirements explicit and fail if they're not met, rather than trying to infer or work around missing requirements.
+
 ## Testing Philosophy
 
 ### Test Pyramid

@@ -131,7 +131,11 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
 fi
 
 FETCHED_DB_PASSWORD=$(echo "$PROJECT_DETAILS" | grep -o '"db_pass":"[^"]*' | cut -d'"' -f4 || echo "")
-DB_HOST=$(echo "$PROJECT_DETAILS" | grep -o '"db_host":"[^"]*' | cut -d'"' -f4 || echo "")
+# Extract DB_HOST from nested database.host structure
+# The API returns: "database":{"host":"db.xxx.supabase.co",...}
+# Extract the database object, then extract host from it
+DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
+DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
 DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
 
 if [ -z "$FETCHED_DB_PASSWORD" ]; then

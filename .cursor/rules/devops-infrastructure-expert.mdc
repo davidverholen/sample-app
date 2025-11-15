@@ -27,6 +27,15 @@ This protocol ensures that agent specifications continuously improve and remain 
 - Backup and disaster recovery
 - Performance monitoring
 
+## Design Principles
+
+### Robust and Simple Implementations
+
+- **No Fallbacks on Fallbacks**: Avoid building complex fallback chains. If the primary approach fails, fail fast with clear error messages rather than trying multiple fallback strategies.
+- **Fail Early and Strictly**: Be very strict with validation and requirements. Fail immediately with clear error messages rather than attempting to work around issues dynamically.
+- **Simple Over Complex**: Prioritize simple, robust implementations over complex solutions that try to handle every edge case.
+- **Explicit Over Implicit**: Make requirements explicit and fail if they're not met, rather than trying to infer or work around missing requirements.
+
 ## Deployment Platforms
 
 ### Vercel (Recommended for Next.js)
@@ -1489,14 +1498,12 @@ jobs:
 
 ### Supabase Preview Instance Management
 
-#### Approach 1: New Supabase Projects (Recommended for Production)
-
-Creates a new Supabase project for each preview using the Management API:
+Review apps create new Supabase projects via the Management API for each pull request. This provides complete isolation between preview instances.
 
 **Requirements**:
-- Supabase Team plan with API access
-- `SUPABASE_ACCESS_TOKEN` with project creation permissions
-- `SUPABASE_ORG_ID` (can be derived from project details)
+- Supabase Team plan with Management API access (required)
+- `SUPABASE_ACCESS_TOKEN` with project creation permissions (`projects:read` and `projects:write`)
+- `SUPABASE_PROJECT_REF` for organization ID derivation
 
 **Implementation**:
 ```bash
@@ -1511,62 +1518,25 @@ RESPONSE=$(curl -s -X POST "$API_URL" \
     \"name\": \"preview-${BRANCH}-pr${PR_NUMBER}\",
     \"organization_id\": \"$SUPABASE_ORG_ID\",
     \"region\": \"us-east-1\",
-    \"plan\": \"free\"
+    \"plan\": \"free\",
+    \"db_pass\": \"$PREVIEW_DB_PASSWORD\"
   }")
 
 # Extract project ID and connection details
-PROJECT_ID=$(echo "$RESPONSE" | jq -r '.id')
-DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${PASSWORD}@${HOST}:5432/postgres?sslmode=require"
+PROJECT_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*' | cut -d'"' -f4)
+DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${PASSWORD}@${DB_HOST}:5432/postgres?sslmode=require"
 ```
 
-**Pros**:
+**Benefits**:
 - Complete isolation between previews
 - No risk of data conflicts
 - True branch-based databases
+- Consistent behavior across all previews
 
-**Cons**:
-- Requires paid Supabase plan
+**Limitations**:
+- Requires Supabase Team plan (hard requirement)
 - API rate limits may apply
-- Slower to create/delete (30+ seconds)
-
-#### Approach 2: Shared Database with Branch Schemas (Fallback)
-
-Uses the main Supabase project database with branch-specific schemas:
-
-**Implementation**:
-```bash
-# Use main project database
-DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
-DB_NAME="postgres"
-
-# Create branch-specific schema name
-SCHEMA_NAME="preview_${SANITIZED_BRANCH}_pr${PR_NUMBER}"
-
-# Connection string (schema created during migration)
-DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=require"
-```
-
-**Pros**:
-- Works with free Supabase plan
-- Faster setup
-- No API rate limits
-
-**Cons**:
-- Less isolation (shared database)
-- Requires careful schema management
-- Potential for naming conflicts
-
-**Schema Management**:
-```sql
--- Create branch-specific schema
-CREATE SCHEMA IF NOT EXISTS preview_feature_123_pr456;
-
--- Set search path for migrations
-SET search_path TO preview_feature_123_pr456, public;
-
--- Apply migrations to branch schema
--- (Prisma migrations run with schema prefix)
-```
+- Projects take 30+ seconds to create/delete
 
 ### Vercel Preview Deployment
 
@@ -1696,10 +1666,9 @@ env:
 - `VERCEL_PROJECT_ID`: Vercel project ID
 
 **Supabase Secrets**:
-- `SUPABASE_ACCESS_TOKEN`: Supabase Management API access token
-- `SUPABASE_PROJECT_REF`: Main Supabase project reference ID
-- `SUPABASE_DB_PASSWORD`: Database password (for shared database approach)
-- `SUPABASE_ORG_ID`: Organization ID (optional, can be derived)
+- `SUPABASE_ACCESS_TOKEN`: Supabase Management API access token (required)
+- `SUPABASE_PROJECT_REF`: Main Supabase project reference ID (required)
+- `SUPABASE_DB_PASSWORD`: Database password (optional, auto-generated if not provided)
 
 **Optional**:
 - `NEXTAUTH_SECRET`: NextAuth secret (generated per preview if not provided)
@@ -1713,29 +1682,8 @@ env:
   env:
     DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
   run: |
-    # For new projects: apply all migrations
+    # Apply all migrations to the new preview project
     npx prisma db push --accept-data-loss
-    
-    # For shared database with schemas: apply to branch schema
-    # (requires custom migration script with schema prefix)
-```
-
-#### Schema Prefix for Shared Database
-
-```typescript
-// Custom migration script for branch schemas
-const schemaName = process.env.PREVIEW_SCHEMA_NAME || 'public';
-
-await prisma.$executeRawUnsafe(`
-  CREATE SCHEMA IF NOT EXISTS ${schemaName};
-  SET search_path TO ${schemaName}, public;
-`);
-
-// Then run migrations
-await prisma.$executeRawUnsafe(`
-  SET search_path TO ${schemaName}, public;
-  -- Migration SQL here
-`);
 ```
 
 ### E2E Testing Against Previews
@@ -1786,9 +1734,6 @@ cleanup-preview:
         curl -X DELETE \
           "https://api.supabase.com/v1/projects/${PROJECT_ID}" \
           -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
-        
-        # Or drop branch schema for shared database
-        # psql "$DATABASE_URL" -c "DROP SCHEMA IF EXISTS ${SCHEMA_NAME} CASCADE;"
 ```
 
 **Note**: Vercel automatically cleans up preview deployments after 30 days of inactivity.
@@ -1837,11 +1782,11 @@ cleanup-preview:
 **Issue**: Supabase preview instance creation fails
 
 **Solutions**:
-- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions
-- Check if using Management API approach (requires Team plan)
-- Script will fall back to shared database approach
+- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions (`projects:read` and `projects:write`)
+- Ensure you have a Supabase Team plan (required for Management API access)
 - Check Supabase API rate limits
-- Verify `SUPABASE_ORG_ID` is set or can be derived
+- Verify `SUPABASE_PROJECT_REF` is correct
+- Ensure the project creation request includes all required fields (name, organization_id, region, plan, db_pass)
 
 #### Environment Variables Not Set
 

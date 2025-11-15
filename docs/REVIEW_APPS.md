@@ -87,7 +87,7 @@ The following secrets must be configured in GitHub Settings → Secrets and vari
 The `deploy-preview` job:
 
 1. Checks out the PR branch code
-2. Creates a Supabase preview instance (or uses shared database with branch schema)
+2. Creates a Supabase preview instance via Management API
 3. Applies database migrations to the preview instance
 4. Seeds the preview database with test data
 5. Deploys the branch to Vercel as a preview deployment
@@ -114,45 +114,26 @@ The `cleanup-preview` job:
 
 ## Supabase Preview Instances
 
-### Approach 1: New Supabase Projects (Recommended for Production)
+Review apps create new Supabase projects via the Management API for each pull request. This provides complete isolation between preview instances.
 
-The scripts attempt to create new Supabase projects via the Management API. This requires:
+**Requirements:**
 
-- Supabase Team plan with API access
+- Supabase Team plan with Management API access (required)
 - `SUPABASE_ACCESS_TOKEN` with project creation permissions
-- `SUPABASE_ORG_ID` environment variable (can be added to workflow)
+- `SUPABASE_PROJECT_REF` for organization ID derivation
 
-**Pros:**
+**Benefits:**
 
 - Complete isolation between preview instances
 - No risk of data conflicts
 - True branch-based databases
+- Consistent behavior across all previews
 
-**Cons:**
+**Limitations:**
 
-- Requires paid Supabase plan
+- Requires Supabase Team plan
 - API rate limits may apply
-- Slower to create/delete
-
-### Approach 2: Shared Database with Branch Schemas (Fallback)
-
-If project creation fails, the scripts fall back to using a shared database with branch-specific schemas:
-
-- Uses the main Supabase project database
-- Creates a schema per branch: `preview_<branch>_pr<number>`
-- Applies migrations to the branch schema
-
-**Pros:**
-
-- Works with free Supabase plan
-- Faster setup
-- No API rate limits
-
-**Cons:**
-
-- Less isolation (shared database)
-- Requires careful schema management
-- Potential for naming conflicts
+- Projects take 30+ seconds to create/delete
 
 ## Environment Variables
 
@@ -199,11 +180,11 @@ The main CI workflow (`.github/workflows/ci.yml`) has been updated to:
 
 **Solutions**:
 
-- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions
-- Check if using Management API approach (requires Team plan)
-- Script will fall back to shared database approach
+- Verify `SUPABASE_ACCESS_TOKEN` has correct permissions (`projects:read` and `projects:write`)
+- Ensure you have a Supabase Team plan (required for Management API access)
 - Check Supabase API rate limits
-- Ensure the `db_pass` requirement is satisfied (the workflow now auto-generates a strong password per preview, but you can also provide `SUPABASE_DB_PASSWORD` to reuse a known value)
+- Verify `SUPABASE_PROJECT_REF` is correct
+- Ensure the `db_pass` requirement is satisfied (the workflow auto-generates a strong password per preview, but you can also provide `SUPABASE_DB_PASSWORD` to reuse a known value)
 
 ### E2E Tests Fail on Preview
 
@@ -226,7 +207,7 @@ The main CI workflow (`.github/workflows/ci.yml`) has been updated to:
 - Check cleanup script logs in workflow
 - Vercel automatically cleans up preview deployments
 - Supabase preview instances may need manual cleanup if script fails
-- Check Supabase dashboard for orphaned projects/schemas
+- Check Supabase dashboard for orphaned projects
 
 ## Manual Testing
 
@@ -249,10 +230,11 @@ To test the review apps workflow manually:
 
 ## Limitations
 
-- Supabase preview instances require Management API access (Team plan) for full isolation
+- Supabase preview instances require Management API access (Team plan) - this is a hard requirement
 - Vercel preview deployments are automatically cleaned up after 30 days of inactivity
 - E2E tests run sequentially (not in parallel) to avoid resource conflicts
 - Preview instances share the same Supabase region as the main project
+- Project creation/deletion takes 30+ seconds
 
 ## Future Improvements
 
