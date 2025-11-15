@@ -15,27 +15,29 @@ const customJestConfig = {
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   testPathIgnorePatterns: ['/node_modules/', '/.next/', '/e2e/'],
   collectCoverageFrom: [
-    'app/**/*.{js,jsx,ts,tsx}',
     'components/**/*.{js,jsx,ts,tsx}',
     'lib/**/*.{js,jsx,ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/.next/**',
     '!**/e2e/**',
+    // Exclude app pages - these are better tested with E2E tests
+    '!app/**/page.tsx',
+    '!app/**/layout.tsx',
+    '!app/**/route.ts',
+    // Exclude auth-config - complex NextAuth setup, tested in E2E
+    '!lib/auth-config.ts',
+    // Exclude re-export files
+    '!components/providers/toast-provider.tsx',
   ],
-  // Only enforce coverage thresholds if not in CI or if COVERAGE_THRESHOLD is set
-  ...(process.env.CI && !process.env.COVERAGE_THRESHOLD
-    ? {}
-    : {
-        coverageThreshold: {
-          global: {
-            branches: 80,
-            functions: 80,
-            lines: 80,
-            statements: 80,
-          },
-        },
-      }),
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+  },
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
