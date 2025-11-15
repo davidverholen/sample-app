@@ -75,7 +75,18 @@ fi
 # The API returns: "database":{"host":"db.xxx.supabase.co",...}
 DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
 DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
-DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
+# Extract DB_NAME - try multiple patterns as API format may vary
+DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "")
+if [ -z "$DB_NAME" ]; then
+  # Try alternative pattern
+  DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"database_name":"[^"]*' | cut -d'"' -f4 || echo "")
+fi
+# Default to "postgres" if still empty
+if [ -z "$DB_NAME" ]; then
+  DB_NAME="postgres"
+  echo "⚠️  Could not extract DB_NAME from API response, defaulting to 'postgres'"
+fi
+echo "✅ Using database name: $DB_NAME"
 
 if [ -z "$DB_HOST" ]; then
   echo "❌ Error: Failed to extract database host from project details"
