@@ -182,6 +182,7 @@ Add database index on email field to improve query performance.
 
 Before creating a PR, ensure:
 
+- [ ] **All uncommitted changes are committed and pushed** (see [Pre-GitHub Operations Checklist](#pre-github-operations-checklist))
 - [ ] Code follows project style guidelines
 - [ ] All tests pass locally (`npm test`)
 - [ ] Type checking passes (`npm run type-check`)
@@ -191,6 +192,45 @@ Before creating a PR, ensure:
 - [ ] Commit messages follow convention
 - [ ] Branch is up to date with target branch
 - [ ] PR description is complete
+
+### Pre-GitHub Operations Checklist
+
+**CRITICAL RULE**: Always check for and commit uncommitted changes before performing any GitHub operations (creating PRs, pushing branches, etc.).
+
+Before any GitHub operation:
+
+1. **Check for uncommitted changes**:
+
+   ```bash
+   git status
+   ```
+
+2. **If there are uncommitted changes**:
+   - Review the changes: `git diff`
+   - Stage the changes: `git add <files>` or `git add .`
+   - Commit with proper message: `git commit -m "type(scope): description"`
+   - Push to remote: `git push origin <branch-name>`
+
+3. **Verify working tree is clean**:
+
+   ```bash
+   git status
+   # Should show: "nothing to commit, working tree clean"
+   ```
+
+4. **Only then proceed with GitHub operations**:
+   - Creating pull requests
+   - Pushing branches
+   - Creating releases
+   - Any other GitHub API operations
+
+**Why this matters**:
+
+- Ensures all changes are tracked in version control
+- Prevents loss of uncommitted work
+- Maintains clean git history
+- Ensures PRs reflect the complete state of changes
+- Prevents confusion about what's included in a PR
 
 ### PR Title Format
 
