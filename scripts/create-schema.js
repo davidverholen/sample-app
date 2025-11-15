@@ -24,6 +24,7 @@ if (!process.env.DATABASE_URL) {
 // Prisma can have issues with Transaction Mode (port 6543) connections
 // Using pg directly gives us more control and better error messages
 const { Client } = require('pg')
+const dns = require('dns').promises
 
 async function createSchema() {
   const schemaName = process.env.SCHEMA_NAME
@@ -40,15 +41,38 @@ async function createSchema() {
     process.exit(1)
   }
 
+  // Parse connection string to extract hostname
+  const urlObj = new URL(databaseUrl)
+  const hostname = urlObj.hostname
+
+  // CRITICAL: Resolve hostname to IPv4 address explicitly
+  // GitHub Actions runners may not have IPv6 connectivity
+  // Supabase resolves to both IPv4 and IPv6, but we need IPv4
+  let resolvedHost = hostname
+  try {
+    console.log(`🔍 Resolving hostname to IPv4: ${hostname}`)
+    const addresses = await dns.resolve4(hostname)
+    if (addresses.length > 0) {
+      resolvedHost = addresses[0]
+      console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
+      // Replace hostname with IPv4 address in connection string
+      urlObj.hostname = resolvedHost
+      databaseUrl = urlObj.toString()
+    } else {
+      console.warn(`⚠️  No IPv4 address found for ${hostname}, using hostname as-is`)
+    }
+  } catch (resolveError) {
+    console.warn(`⚠️  DNS resolution failed: ${resolveError.message}`)
+    console.warn(`   Using hostname as-is (may fail if IPv6 is not available)`)
+  }
+
   // Create pg Client with explicit connection string
   // pg handles Transaction Mode (port 6543) connections better than Prisma
-  // CRITICAL: Force IPv4 (family: 4) because GitHub Actions runners may not have IPv6 connectivity
-  // Supabase resolves to both IPv4 and IPv6, but we need IPv4 for GitHub Actions
   const client = new Client({
     connectionString: databaseUrl,
     // Force IPv4 to avoid ENETUNREACH errors on GitHub Actions
     // GitHub Actions runners may not have IPv6 connectivity
-    family: 4, // Use IPv4 only
+    family: 4, // Use IPv4 only (backup in case DNS resolution didn't work)
     // Disable prepared statements for Transaction Mode
     // Transaction Mode (port 6543) doesn't support prepared statements
     statement_timeout: 30000, // 30 seconds
@@ -56,17 +80,15 @@ async function createSchema() {
   })
 
   // Debug: Log the actual connection string components (without password)
-  try {
-    const urlObj = new URL(databaseUrl)
-    console.log(`🔍 Connection details:`)
-    console.log(`   Protocol: ${urlObj.protocol}`)
-    console.log(`   Host: ${urlObj.hostname}`)
-    console.log(`   Port: ${urlObj.port}`)
-    console.log(`   Database: ${urlObj.pathname.replace('/', '')}`)
-    console.log(`   Search params: ${urlObj.search}`)
-  } catch (e) {
-    console.log(`⚠️  Could not parse connection string: ${e.message}`)
-  }
+  // Note: urlObj was already created above for DNS resolution
+  console.log(`🔍 Connection details:`)
+  console.log(`   Protocol: ${urlObj.protocol}`)
+  console.log(
+    `   Host: ${urlObj.hostname}${resolvedHost !== hostname ? ` (resolved from ${hostname})` : ''}`
+  )
+  console.log(`   Port: ${urlObj.port}`)
+  console.log(`   Database: ${urlObj.pathname.replace('/', '')}`)
+  console.log(`   Search params: ${urlObj.search}`)
 
   // Log connection info (without password)
   const safeUrl = databaseUrl.replace(/:[^:@]+@/, ':***@')
