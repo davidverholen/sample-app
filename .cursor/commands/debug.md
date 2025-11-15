@@ -1,0 +1,595 @@
+# Debug Failing GitHub Pull Request
+
+Debug the current open, failing GitHub pull request. Investigate CI/CD failures, identify root causes, and fix issues systematically.
+
+## CRITICAL: Debug Process
+
+**MANDATORY**: Follow a systematic debugging approach. Identify the root cause before attempting fixes. Document findings and solutions.
+
+## Initial Investigation
+
+### 1. Get PR Information
+
+```bash
+# Get current branch and PR number
+gh pr view --json number,title,body,headRefName,baseRefName,state,isDraft
+
+# Get PR number for commands
+PR_NUMBER=$(gh pr view --json number --jq '.number')
+BRANCH_NAME=$(gh pr view --json headRefName --jq '.headRefName')
+
+# Check PR status
+gh pr view --json state,mergeable,mergeStateStatus
+```
+
+### 2. Check CI/CD Status
+
+```bash
+# View all checks for the PR
+gh pr checks
+
+# View detailed check status with conclusions
+gh pr view --json statusCheckRollup --jq '.statusCheckRollup[] | "\(.name): \(.status) - \(.conclusion // "pending")"'
+
+# List all workflow runs for this PR
+gh run list --branch "$BRANCH_NAME" --limit 10
+
+# Get the latest failed run
+FAILED_RUN=$(gh run list --branch "$BRANCH_NAME" --json databaseId,conclusion,status --jq '.[] | select(.conclusion == "failure" or .status == "in_progress") | .databaseId' | head -1)
+```
+
+### 3. View Workflow Run Details
+
+```bash
+# View specific workflow run
+gh run view $FAILED_RUN
+
+# View failed jobs only
+gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | "\(.name): \(.conclusion)"'
+
+# View logs for failed job
+gh run view $FAILED_RUN --log-failed
+
+# View logs for specific job
+gh run view $FAILED_RUN --job <job-id> --log
+```
+
+### 4. Identify Failing Jobs
+
+```bash
+# Get all failed jobs with details
+gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | {
+  name: .name,
+  conclusion: .conclusion,
+  startedAt: .startedAt,
+  completedAt: .completedAt,
+  steps: [.steps[] | select(.conclusion == "failure") | {
+    name: .name,
+    conclusion: .conclusion,
+    number: .number
+  }]
+}'
+```
+
+## Agent-Specific Debugging Focus
+
+### DevOps & Infrastructure Expert
+
+**Focus Areas:**
+
+- ✅ Workflow file syntax errors
+- ✅ Missing or incorrect secrets
+- ✅ Environment variable issues
+- ✅ Timeout issues
+- ✅ Resource limits
+- ✅ Deployment failures
+- ✅ Script execution errors
+
+**Debugging Steps:**
+
+1. **Check Workflow Syntax**:
+
+   ```bash
+   # View workflow files changed in PR
+   gh pr diff --name-only | grep "\.github/workflows"
+
+   # Validate workflow syntax locally
+   act workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+   ```
+
+2. **Check Secrets**:
+
+   ```bash
+   # Verify required secrets are mentioned (don't expose values)
+   gh run view $FAILED_RUN --log | grep -i "secret\|token\|password" | head -20
+   ```
+
+3. **Check Environment Variables**:
+
+   ```bash
+   # View environment setup in logs
+   gh run view $FAILED_RUN --log | grep -A 5 "Setting up\|Environment"
+   ```
+
+4. **Check Timeouts**:
+   ```bash
+   # View job durations
+   gh run view $FAILED_RUN --json jobs --jq '.jobs[] | "\(.name): \(.startedAt) - \(.completedAt)"'
+   ```
+
+### Backend/API Expert
+
+**Focus Areas:**
+
+- ✅ API route errors
+- ✅ Server Action failures
+- ✅ Middleware issues
+- ✅ Validation errors
+- ✅ Database connection issues
+- ✅ Authentication/authorization failures
+
+**Debugging Steps:**
+
+1. **Check API Route Errors**:
+
+   ```bash
+   # View changed API routes
+   gh pr diff --name-only | grep "app/api"
+
+   # Check for error patterns in logs
+   gh run view $FAILED_RUN --log | grep -i "error\|exception\|failed" | head -30
+   ```
+
+2. **Check Server Actions**:
+
+   ```bash
+   # View changed Server Actions
+   gh pr diff --name-only | grep -E "actions\.ts|actions\.tsx"
+   ```
+
+3. **Check Validation**:
+   ```bash
+   # Look for Zod validation errors
+   gh run view $FAILED_RUN --log | grep -i "zod\|validation\|invalid"
+   ```
+
+### Next.js Frontend Expert
+
+**Focus Areas:**
+
+- ✅ Component errors
+- ✅ Build failures
+- ✅ TypeScript errors
+- ✅ Client/Server Component issues
+- ✅ Routing errors
+
+**Debugging Steps:**
+
+1. **Check Build Errors**:
+
+   ```bash
+   # View build job logs
+   gh run view $FAILED_RUN --log | grep -A 10 -i "build\|error\|failed"
+   ```
+
+2. **Check TypeScript Errors**:
+
+   ```bash
+   # View type-check job logs
+   gh run view $FAILED_RUN --log | grep -A 5 "type-check\|typescript\|error TS"
+   ```
+
+3. **Check Component Issues**:
+   ```bash
+   # View changed components
+   gh pr diff --name-only | grep -E "components/|app/.*page\.tsx"
+   ```
+
+### Database & Schema Expert
+
+**Focus Areas:**
+
+- ✅ Migration failures
+- ✅ Schema validation errors
+- ✅ Query errors
+- ✅ Connection issues
+- ✅ Prisma errors
+
+**Debugging Steps:**
+
+1. **Check Migration Errors**:
+
+   ```bash
+   # View migration-related logs
+   gh run view $FAILED_RUN --log | grep -i "migration\|prisma\|schema"
+   ```
+
+2. **Check Database Connection**:
+
+   ```bash
+   # Look for connection errors
+   gh run view $FAILED_RUN --log | grep -i "connection\|database\|postgres"
+   ```
+
+3. **Check Prisma Errors**:
+   ```bash
+   # View Prisma-specific errors
+   gh run view $FAILED_RUN --log | grep -i "prisma\|query\|transaction"
+   ```
+
+### Security Expert
+
+**Focus Areas:**
+
+- ✅ Security scan failures
+- ✅ Secret detection
+- ✅ Vulnerability reports
+- ✅ Authentication failures
+- ✅ Authorization errors
+
+**Debugging Steps:**
+
+1. **Check Security Scans**:
+
+   ```bash
+   # View security job logs
+   gh run view $FAILED_RUN --log | grep -A 10 -i "security\|vulnerability\|audit"
+   ```
+
+2. **Check Secret Detection**:
+
+   ```bash
+   # Look for secret scanning results
+   gh run view $FAILED_RUN --log | grep -i "secret\|trufflehog\|leak"
+   ```
+
+3. **Check npm audit**:
+   ```bash
+   # View npm audit results
+   gh run view $FAILED_RUN --log | grep -A 20 "npm audit"
+   ```
+
+### Testing & QA Expert
+
+**Focus Areas:**
+
+- ✅ Test failures
+- ✅ Coverage threshold failures
+- ✅ E2E test failures
+- ✅ Test timeout issues
+- ✅ Mock/stub issues
+
+**Debugging Steps:**
+
+1. **View Test Failures**:
+
+   ```bash
+   # Get test job logs
+   gh run view $FAILED_RUN --log | grep -A 10 "FAIL\|●\|✕"
+   ```
+
+2. **Check Coverage**:
+
+   ```bash
+   # View coverage reports
+   gh run view $FAILED_RUN --log | grep -A 10 "coverage\|threshold"
+   ```
+
+3. **Check E2E Failures**:
+
+   ```bash
+   # View E2E test logs
+   gh run view $FAILED_RUN --log | grep -A 20 "playwright\|e2e\|test.*spec"
+   ```
+
+4. **Download Test Artifacts**:
+
+   ```bash
+   # List artifacts
+   gh run view $FAILED_RUN --json artifacts --jq '.artifacts[] | .name'
+
+   # Download test artifacts (videos, screenshots)
+   gh run download $FAILED_RUN
+   ```
+
+### Performance Optimization Expert
+
+**Focus Areas:**
+
+- ✅ Build size issues
+- ✅ Bundle size failures
+- ✅ Performance regression
+- ✅ Core Web Vitals failures
+
+**Debugging Steps:**
+
+1. **Check Bundle Size**:
+
+   ```bash
+   # View build output for size info
+   gh run view $FAILED_RUN --log | grep -i "size\|bundle\|kb\|mb"
+   ```
+
+2. **Check Performance Metrics**:
+   ```bash
+   # Look for performance-related errors
+   gh run view $FAILED_RUN --log | grep -i "performance\|lighthouse\|web vitals"
+   ```
+
+## Common Failure Patterns
+
+### Lint Failures
+
+```bash
+# View lint errors
+gh run view $FAILED_RUN --log | grep -A 5 "eslint\|lint"
+
+# Fix locally
+npm run lint -- --fix
+```
+
+### Type Check Failures
+
+```bash
+# View TypeScript errors
+gh run view $FAILED_RUN --log | grep -A 3 "error TS"
+
+# Check locally
+npm run type-check
+```
+
+### Test Failures
+
+```bash
+# View specific test failures
+gh run view $FAILED_RUN --log | grep -B 5 -A 10 "FAIL"
+
+# Run tests locally
+npm test
+```
+
+### Build Failures
+
+```bash
+# View build errors
+gh run view $FAILED_RUN --log | grep -A 10 "build\|error\|failed"
+
+# Build locally
+npm run build
+```
+
+### Coverage Failures
+
+```bash
+# Check coverage threshold
+gh run view $FAILED_RUN --log | grep -A 5 "coverage\|threshold"
+
+# Run coverage locally
+npm test -- --coverage
+```
+
+## Debugging Workflow
+
+### Step 1: Identify the Failure
+
+```bash
+# Get comprehensive failure summary
+echo "=== PR Information ==="
+gh pr view
+
+echo "=== Failed Checks ==="
+gh pr checks | grep -i "fail\|error"
+
+echo "=== Latest Failed Run ==="
+gh run list --branch "$BRANCH_NAME" --limit 1 --json conclusion,status,workflowName
+```
+
+### Step 2: Analyze the Error
+
+```bash
+# Get detailed error logs
+FAILED_RUN=$(gh run list --branch "$BRANCH_NAME" --json databaseId,conclusion --jq '.[] | select(.conclusion == "failure") | .databaseId' | head -1)
+
+if [ -n "$FAILED_RUN" ]; then
+  echo "=== Failed Run Details ==="
+  gh run view $FAILED_RUN
+
+  echo "=== Failed Jobs ==="
+  gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name'
+
+  echo "=== Error Logs ==="
+  gh run view $FAILED_RUN --log-failed
+fi
+```
+
+### Step 3: Reproduce Locally
+
+```bash
+# Checkout the PR branch
+gh pr checkout $PR_NUMBER
+
+# Run the failing check locally
+# Example for lint:
+npm run lint
+
+# Example for tests:
+npm test
+
+# Example for build:
+npm run build
+```
+
+### Step 4: Fix the Issue
+
+1. **Identify root cause** from logs
+2. **Make necessary code changes**
+3. **Test fix locally**:
+   ```bash
+   # Run the specific check that failed
+   npm run lint          # If lint failed
+   npm run type-check   # If type-check failed
+   npm test             # If tests failed
+   npm run build        # If build failed
+   ```
+
+### Step 5: Commit and Push Fix
+
+```bash
+# Stage changes
+git add <fixed-files>
+
+# Commit with proper message
+git commit -m "fix(scope): resolve [specific issue from CI failure]"
+
+# Push to update PR
+git push origin $BRANCH_NAME
+```
+
+### Step 6: Verify Fix
+
+```bash
+# Wait for CI to run (or trigger manually)
+gh workflow run <workflow-name> --ref $BRANCH_NAME
+
+# Monitor the new run
+gh run watch
+```
+
+## Agent-Specific Debugging Commands
+
+### For DevOps Expert
+
+```bash
+# Check workflow file syntax
+yamllint .github/workflows/*.yml
+
+# Validate workflow locally (if act is installed)
+act workflow_dispatch --workflows .github/workflows/ci.yml --dryrun
+
+# Check for common workflow issues
+gh run view $FAILED_RUN --log | grep -i "permission\|secret\|timeout\|resource"
+```
+
+### For Backend Expert
+
+```bash
+# Check API route changes
+gh pr diff | grep -A 20 "app/api"
+
+# Test API routes locally
+npm run dev
+# Then test endpoints manually or with curl
+```
+
+### For Frontend Expert
+
+```bash
+# Check build output
+npm run build 2>&1 | tee build.log
+
+# Check for specific errors
+grep -i "error\|failed" build.log
+```
+
+### For Database Expert
+
+```bash
+# Check Prisma schema
+npx prisma validate
+
+# Check migrations
+npx prisma migrate status
+
+# Test database connection
+npx prisma db execute --stdin <<< "SELECT 1;"
+```
+
+### For Testing Expert
+
+```bash
+# Run specific failing test
+npm test -- --testNamePattern "specific test name"
+
+# Run with verbose output
+npm test -- --verbose
+
+# Check coverage locally
+npm test -- --coverage --coverageReporters=text
+```
+
+## GitHub Documentation References
+
+### Official GitHub Documentation
+
+- **[Viewing workflow run history](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/viewing-workflow-run-history)**: How to view and analyze workflow runs
+- **[Using workflow run logs](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/using-workflow-run-logs)**: Understanding workflow logs
+- **[Troubleshooting workflows](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/troubleshooting-workflows)**: Common workflow issues and solutions
+- **[Re-running workflows and jobs](https://docs.github.com/en/actions/managing-workflow-runs/re-running-workflows-and-jobs)**: How to re-run failed workflows
+- **[Downloading workflow artifacts](https://docs.github.com/en/actions/using-workflows/storing-workflow-data-as-artifacts#downloading-artifacts)**: Accessing workflow artifacts
+
+### GitHub CLI Documentation
+
+- **[GitHub CLI: `gh run view`](https://cli.github.com/manual/gh_run_view)**: View workflow run details and logs
+- **[GitHub CLI: `gh run list`](https://cli.github.com/manual/gh_run_list)**: List workflow runs
+- **[GitHub CLI: `gh run watch`](https://cli.github.com/manual/gh_run_watch)**: Watch a workflow run in real-time
+- **[GitHub CLI: `gh run download`](https://cli.github.com/manual/gh_run_download)**: Download workflow artifacts
+- **[GitHub CLI: `gh pr checks`](https://cli.github.com/manual/gh_pr_checks)**: View PR check status
+- **[GitHub CLI: `gh pr view`](https://cli.github.com/manual/gh_pr_view)**: View PR details and status
+
+### Debugging Best Practices
+
+- **[Debugging failed workflows](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/troubleshooting-workflows#debugging-workflow-runs)**: GitHub's debugging guide
+- **[Workflow run logs](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/using-workflow-run-logs)**: Understanding log structure
+- **[Common workflow errors](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/troubleshooting-workflows#common-workflow-errors)**: Common issues and solutions
+
+## Debugging Checklist
+
+- [ ] Identified which check/job is failing
+- [ ] Viewed detailed error logs from GitHub Actions
+- [ ] Reproduced the issue locally
+- [ ] Identified root cause (not just symptoms)
+- [ ] Fixed the issue
+- [ ] Tested fix locally (all checks pass)
+- [ ] Committed fix with proper message
+- [ ] Pushed fix to PR branch
+- [ ] Verified CI passes after fix
+- [ ] Documented the issue and solution (if non-trivial)
+
+## Best Practices
+
+- **Reproduce locally first**: Don't guess - reproduce the exact failure
+- **Read full error logs**: Don't just look at summary - read complete error messages
+- **Check recent changes**: Review what changed in the PR that might have caused the failure
+- **Test incrementally**: Fix one issue at a time, test, then move to next
+- **Document findings**: If the issue is complex, document it for future reference
+- **Use proper commit messages**: Follow Conventional Commits when fixing issues
+- **Verify before pushing**: Always test locally before pushing fixes
+
+## Quick Reference
+
+```bash
+# Get PR number
+PR_NUMBER=$(gh pr view --json number --jq '.number')
+
+# Get branch name
+BRANCH_NAME=$(gh pr view --json headRefName --jq '.headRefName')
+
+# Get latest failed run
+FAILED_RUN=$(gh run list --branch "$BRANCH_NAME" --json databaseId,conclusion --jq '.[] | select(.conclusion == "failure") | .databaseId' | head -1)
+
+# View failed run logs
+gh run view $FAILED_RUN --log-failed
+
+# Checkout PR branch
+gh pr checkout $PR_NUMBER
+
+# Re-run failed workflow
+gh run rerun $FAILED_RUN
+```
+
+## Additional Resources
+
+- **[GitHub Actions Documentation](https://docs.github.com/en/actions)**: Complete GitHub Actions guide
+- **[Troubleshooting GitHub Actions](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows)**: Comprehensive troubleshooting guide
+- **[GitHub CLI Manual](https://cli.github.com/manual/)**: Full GitHub CLI command reference
+- **[Project CI/CD Documentation](./docs/GIT_WORKFLOW.md)**: Project-specific CI/CD setup
