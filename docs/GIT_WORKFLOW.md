@@ -182,6 +182,7 @@ Add database index on email field to improve query performance.
 
 Before creating a PR, ensure:
 
+- [ ] **All uncommitted changes are committed and pushed** (see [Pre-GitHub Operations Checklist](#pre-github-operations-checklist))
 - [ ] Code follows project style guidelines
 - [ ] All tests pass locally (`npm test`)
 - [ ] Type checking passes (`npm run type-check`)
@@ -191,6 +192,45 @@ Before creating a PR, ensure:
 - [ ] Commit messages follow convention
 - [ ] Branch is up to date with target branch
 - [ ] PR description is complete
+
+### Pre-GitHub Operations Checklist
+
+**CRITICAL RULE**: Always check for and commit uncommitted changes before performing any GitHub operations (creating PRs, pushing branches, etc.).
+
+Before any GitHub operation:
+
+1. **Check for uncommitted changes**:
+
+   ```bash
+   git status
+   ```
+
+2. **If there are uncommitted changes**:
+   - Review the changes: `git diff`
+   - Stage the changes: `git add <files>` or `git add .`
+   - Commit with proper message: `git commit -m "type(scope): description"`
+   - Push to remote: `git push origin <branch-name>`
+
+3. **Verify working tree is clean**:
+
+   ```bash
+   git status
+   # Should show: "nothing to commit, working tree clean"
+   ```
+
+4. **Only then proceed with GitHub operations**:
+   - Creating pull requests
+   - Pushing branches
+   - Creating releases
+   - Any other GitHub API operations
+
+**Why this matters**:
+
+- Ensures all changes are tracked in version control
+- Prevents loss of uncommitted work
+- Maintains clean git history
+- Ensures PRs reflect the complete state of changes
+- Prevents confusion about what's included in a PR
 
 ### PR Title Format
 
@@ -520,6 +560,165 @@ For complete protection, configure GitHub branch protection rules:
 - **PR Requirements**: Enforces PR workflow
 
 See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed configuration instructions.
+
+### Using GitHub CLI (gh) for Administrative Tasks
+
+The GitHub CLI (`gh`) provides a powerful command-line interface for managing repository settings and administrative tasks. This is especially useful for:
+
+- Updating branch protection rules
+- Managing repository settings
+- Configuring workflows
+- Managing issues and pull requests programmatically
+
+#### Installation
+
+```bash
+# Linux (Debian/Ubuntu)
+sudo apt install gh
+
+# macOS
+brew install gh
+
+# Or download from: https://cli.github.com/
+```
+
+#### Authentication
+
+```bash
+# Login to GitHub
+gh auth login
+
+# Verify authentication
+gh auth status
+```
+
+#### Common Administrative Tasks
+
+**Update Branch Protection Status Checks**
+
+When status check names change (e.g., after renaming a workflow), update branch protection:
+
+```bash
+# Update main branch protection
+gh api repos/:owner/:repo/branches/main/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build",
+    "CI / e2e",
+    "CI / security",
+    "CI / commit-message",
+    "CI / pr-checks"
+  ]
+}
+EOF
+
+# Update develop branch protection
+gh api repos/:owner/:repo/branches/develop/protection/required_status_checks \
+  -X PATCH --input - << 'EOF'
+{
+  "strict": true,
+  "contexts": [
+    "CI / lint",
+    "CI / type-check",
+    "CI / test",
+    "CI / build"
+  ]
+}
+EOF
+```
+
+**View Current Branch Protection Settings**
+
+```bash
+# View main branch protection
+gh api repos/:owner/:repo/branches/main/protection
+
+# View required status checks
+gh api repos/:owner/:repo/branches/main/protection --jq '.required_status_checks.contexts[]'
+```
+
+**Manage Repository Settings**
+
+```bash
+# View repository settings
+gh repo view --json name,description,visibility
+
+# Update repository description
+gh repo edit --description "New description"
+
+# Enable/disable features
+gh repo edit --enable-issues
+gh repo edit --enable-wiki
+```
+
+**Manage Branch Protection Rules**
+
+```bash
+# List all branch protection rules
+gh api repos/:owner/:repo/branches --jq '.[].name'
+
+# Get specific branch protection details
+gh api repos/:owner/:repo/branches/main/protection
+
+# Update pull request review requirements
+gh api repos/:owner/:repo/branches/main/protection/required_pull_request_reviews \
+  -X PATCH -f required_approving_review_count=0 \
+  -f dismiss_stale_reviews=false
+```
+
+**Workflow Management**
+
+```bash
+# List workflows
+gh workflow list
+
+# View workflow runs
+gh run list
+
+# View specific workflow run
+gh run view <run-id>
+
+# Rerun a failed workflow
+gh run rerun <run-id>
+```
+
+**Issue and PR Management**
+
+```bash
+# List issues
+gh issue list
+
+# Create an issue
+gh issue create --title "Issue title" --body "Issue description"
+
+# List PRs
+gh pr list
+
+# View PR details
+gh pr view <number>
+
+# Merge a PR
+gh pr merge <number> --squash
+```
+
+#### Tips
+
+- Use `:owner/:repo` as a placeholder - `gh` will automatically use the current repository
+- Use `--jq` flag for JSON output filtering (requires `jq` to be installed)
+- Use `--input -` with heredoc syntax for complex JSON payloads
+- Always verify changes with `gh api` GET requests before making PATCH/PUT requests
+
+#### Security Notes
+
+- `gh` uses your GitHub authentication token
+- Ensure you have appropriate repository permissions (admin for branch protection)
+- Review changes carefully before applying them
+- Consider testing on a non-production branch first
 
 ### Enforcement Summary
 

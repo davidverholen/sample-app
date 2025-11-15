@@ -55,6 +55,10 @@ next-env.d.ts
 # swc
 .swc
 
+# playwright
+playwright-report/
+test-results/
+
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json
