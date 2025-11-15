@@ -74,9 +74,22 @@ if [ -z "$DB_HOST" ]; then
 fi
 
 # Construct main database connection string
-# Use connection pooling (port 6543) for external IPs like GitHub Actions runners
+# Use Transaction Mode pooling (port 6543) for external IPs like GitHub Actions runners
+# Protocol: postgres:// (not postgresql://) for Transaction Mode
+# Username: postgres (NO project ref prefix) for Transaction Mode
 # Port 5432 (direct connection) is blocked by Supabase firewall for external IPs
-MAIN_DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
+# URL encode the password to handle special characters
+if command -v node >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$SUPABASE_DB_PASSWORD" 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+elif command -v python3 >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SUPABASE_DB_PASSWORD', safe=''))" 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+elif command -v jq >/dev/null 2>&1; then
+  ENCODED_PASSWORD=$(printf '%s' "$SUPABASE_DB_PASSWORD" | jq -sRr @uri 2>/dev/null || echo "$SUPABASE_DB_PASSWORD")
+else
+  ENCODED_PASSWORD="$SUPABASE_DB_PASSWORD"
+  echo "⚠️  Warning: No URL encoding tool available, using password as-is"
+fi
+MAIN_DATABASE_URL="postgres://postgres:${ENCODED_PASSWORD}@${DB_HOST}:6543/${DB_NAME}?sslmode=require"
 
 # Drop PostgreSQL schema using Prisma
 echo "🗑️  Dropping PostgreSQL schema: $SCHEMA_NAME"
