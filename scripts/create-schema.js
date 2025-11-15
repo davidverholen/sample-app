@@ -20,7 +20,10 @@ if (!process.env.DATABASE_URL) {
   process.exit(1)
 }
 
-const { PrismaClient } = require('@prisma/client')
+// Use pg library directly for Transaction Mode connections
+// Prisma can have issues with Transaction Mode (port 6543) connections
+// Using pg directly gives us more control and better error messages
+const { Client } = require('pg')
 
 async function createSchema() {
   const schemaName = process.env.SCHEMA_NAME
@@ -37,16 +40,14 @@ async function createSchema() {
     process.exit(1)
   }
 
-  // Create Prisma Client with explicit DATABASE_URL to avoid environment variable timing issues
-  // This ensures Prisma uses the correct connection string even if process.env.DATABASE_URL
-  // isn't available when the module is first loaded
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl,
-      },
-    },
-    log: ['error', 'warn', 'query'],
+  // Create pg Client with explicit connection string
+  // pg handles Transaction Mode (port 6543) connections better than Prisma
+  const client = new Client({
+    connectionString: databaseUrl,
+    // Disable prepared statements for Transaction Mode
+    // Transaction Mode (port 6543) doesn't support prepared statements
+    statement_timeout: 30000, // 30 seconds
+    query_timeout: 30000,
   })
 
   // Debug: Log the actual connection string components (without password)
@@ -68,44 +69,49 @@ async function createSchema() {
   console.log(`📦 Creating schema: ${schemaName}`)
 
   try {
-    // Test connection first with a simple query to get better error messages
-    // This helps diagnose connection issues vs. query issues
+    // Connect to database
+    console.log('📡 Connecting to database...')
+    await client.connect()
+    console.log('✅ Connected to database')
+
+    // Test connection with a simple query
     try {
-      await prisma.$queryRawUnsafe('SELECT 1 as test')
+      const testResult = await client.query(
+        'SELECT 1 as test, current_database() as db, current_schema() as schema'
+      )
       console.log('✅ Connection test successful')
-    } catch (connectError) {
-      console.error('❌ Connection test failed:', connectError.message)
-      if (connectError.code) {
-        console.error(`   Error code: ${connectError.code}`)
-      }
-      if (connectError.meta) {
-        console.error(`   Error meta:`, JSON.stringify(connectError.meta, null, 2))
-      }
-      throw connectError
+      console.log(`   Database: ${testResult.rows[0].db}`)
+      console.log(`   Current schema: ${testResult.rows[0].schema}`)
+    } catch (testError) {
+      console.error('❌ Connection test failed:', testError.message)
+      throw testError
     }
 
-    // Skip explicit $connect() - Prisma will connect lazily on first query
-    // This avoids issues with Transaction Mode (port 6543) where $connect() may fail
-    // but the actual query execution works fine
-    // Create schema using raw SQL
+    // Create schema using parameterized query to prevent SQL injection
     // PostgreSQL identifiers need to be quoted if they contain special characters
     // But our schema name is sanitized, so we can use it directly
-    // Using parameterized query to prevent SQL injection
-    await prisma.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`)
+    // Using pg_escape_identifier for safety
+    const escapedSchemaName = schemaName.replace(/"/g, '""') // Escape double quotes
+    await client.query(`CREATE SCHEMA IF NOT EXISTS "${escapedSchemaName}"`)
     console.log(`✅ Schema created successfully: ${schemaName}`)
 
     // Verify schema was created
-    // Note: $queryRawUnsafe doesn't support parameterized queries ($1 syntax)
-    // Use string interpolation with proper escaping for Transaction Mode compatibility
-    const schemas = await prisma.$queryRawUnsafe(
-      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = '${schemaName.replace(/'/g, "''")}'`
+    // Note: Transaction Mode doesn't support prepared statements, so we use string interpolation
+    // Schema name is sanitized, so SQL injection is not a concern
+    const escapedSchemaNameForQuery = schemaName.replace(/'/g, "''") // Escape single quotes for SQL
+    const verifyResult = await client.query(
+      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = '${escapedSchemaNameForQuery}'`
     )
 
-    if (Array.isArray(schemas) && schemas.length > 0) {
+    if (verifyResult.rows.length > 0) {
       console.log(`✅ Schema verified: ${schemaName} exists`)
+    } else {
+      console.warn(
+        `⚠️  Warning: Schema ${schemaName} was created but not found in verification query`
+      )
     }
 
-    await prisma.$disconnect()
+    await client.end()
     process.exit(0)
   } catch (error) {
     console.error(`❌ Error creating schema: ${error.message}`)
@@ -114,30 +120,37 @@ async function createSchema() {
       console.error(`   Error code: ${error.code}`)
     }
 
-    if (error.meta) {
-      console.error(`   Error details:`, JSON.stringify(error.meta, null, 2))
-    }
-
     // Provide specific error guidance
-    if (error.message.includes("Can't reach database server")) {
+    if (
+      error.message.includes("Can't reach database server") ||
+      error.message.includes('ENOTFOUND') ||
+      error.message.includes('ECONNREFUSED')
+    ) {
       console.error('')
       console.error('💡 This error typically indicates:')
       console.error('   1. Database host is incorrect or unreachable')
       console.error('   2. Network connectivity issues (firewall blocking)')
-      console.error('   3. Database connection string format is incorrect')
-      console.error('   4. Supabase project might not allow direct connections')
+      console.error('   3. DNS resolution failure')
+      console.error('   4. Supabase project might not allow connections from this IP')
       console.error('')
       console.error('🔧 Troubleshooting:')
       console.error(
         '   - Verify DATABASE_URL format is correct (should include ?pgbouncer=true for Transaction Mode)'
       )
       console.error('   - Check if password needs URL encoding (special characters)')
-      console.error('   - Verify database host is accessible from GitHub Actions')
+      console.error(
+        '   - Verify database host is accessible (try: ping db.[PROJECT-REF].supabase.co)'
+      )
       console.error('   - Check Supabase project settings for connection restrictions')
       console.error(
         '   - Ensure connection string includes: ?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30'
       )
-    } else if (error.message.includes('authentication') || error.message.includes('password')) {
+      console.error('   - Verify Transaction Mode (port 6543) is enabled in Supabase project')
+    } else if (
+      error.message.includes('authentication') ||
+      error.message.includes('password') ||
+      error.message.includes('password authentication failed')
+    ) {
       console.error('')
       console.error('💡 This error typically indicates:')
       console.error('   1. Database password is incorrect')
@@ -148,9 +161,23 @@ async function createSchema() {
       console.error('   - Verify SUPABASE_DB_PASSWORD is correct')
       console.error('   - Ensure password is URL-encoded if it contains special characters')
       console.error('   - Check database user permissions in Supabase dashboard')
+      console.error(
+        '   - Verify username is "postgres" (not "postgres.[PROJECT-REF]") for Transaction Mode'
+      )
+    } else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+      console.error('')
+      console.error('💡 This error typically indicates:')
+      console.error('   1. Connection timeout - database server is not responding')
+      console.error('   2. Network latency issues')
+      console.error('   3. Firewall blocking the connection')
+      console.error('')
+      console.error('🔧 Troubleshooting:')
+      console.error('   - Increase connect_timeout in connection string')
+      console.error('   - Check network connectivity to Supabase')
+      console.error('   - Verify Transaction Mode (port 6543) is accessible')
     }
 
-    await prisma.$disconnect().catch(() => {})
+    await client.end().catch(() => {})
     process.exit(1)
   }
 }
