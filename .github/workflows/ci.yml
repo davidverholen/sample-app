@@ -97,6 +97,7 @@ jobs:
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          CI: true
         run: npm test -- --coverage
 
       - name: Check coverage thresholds
