@@ -127,6 +127,21 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -143,9 +158,14 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Setup database schema
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        run: npx prisma db push --accept-data-loss || true
+
       - name: Build application
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/test_db' }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'test-secret-for-build-min-32-chars' }}
           NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL || 'http://localhost:3000' }}
         run: npm run build
@@ -333,19 +353,19 @@ jobs:
       - name: Validate branch naming
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
-          
+
           # Check for release branches (format: release/v1.2.3)
           if [[ "$BRANCH_NAME" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "✅ Branch name '$BRANCH_NAME' follows the release format"
             exit 0
           fi
-          
+
           # Check for feature/bugfix/hotfix branches (format: type/issue-number-description)
           if [[ "$BRANCH_NAME" =~ ^(feature|bugfix|hotfix)/[0-9]+-.*$ ]]; then
             echo "✅ Branch name '$BRANCH_NAME' follows the required format"
             exit 0
           fi
-          
+
           # If we get here, the branch name is invalid
           echo "❌ Branch name '$BRANCH_NAME' does not follow the required format!"
           echo ""
@@ -370,12 +390,12 @@ jobs:
         with:
           script: |
             const failures = [];
-            
+
             // Check if PR title validation failed
             if ('${{ job.status }}' === 'failure') {
               failures.push('⚠️ PR title does not follow the Conventional Commits format. Please update it to: `<type>(<scope>): <subject>`');
             }
-            
+
             // Check if branch naming failed
             if (failures.length > 0) {
               const body = `## ❌ PR Validation Failed\n\n${failures.join('\n\n')}\n\nPlease fix the issues above and push again.`;
@@ -408,26 +428,26 @@ jobs:
               'commit-message': '${{ needs.commit-message.result }}',
               'pr-checks': '${{ needs.pr-checks.result }}'
             };
-            
+
             // Filter out skipped jobs and create summary
             const activeJobs = Object.entries(jobs).filter(([_, status]) => status !== 'skipped');
             const allPassed = activeJobs.every(([_, status]) => status === 'success');
             const emoji = allPassed ? '✅' : '⚠️';
             const status = allPassed ? 'All checks passed!' : 'Some checks failed';
-            
+
             let body = `## ${emoji} CI Checks Summary: ${status}\n\n`;
             body += '| Check | Status |\n';
             body += '|-------|--------|\n';
-            
+
             for (const [job, status] of Object.entries(jobs)) {
               if (status === 'skipped') continue;
               const statusEmoji = status === 'success' ? '✅' : status === 'failure' ? '❌' : '⏳';
               body += `| ${job} | ${statusEmoji} ${status} |\n`;
             }
-            
+
             body += '\n---\n';
             body += '**Note**: This is an automated summary. Check the [Actions tab](https://github.com/${{ github.repository }}/actions) for detailed logs.\n';
-            
+
             // Post comment (only if PR exists)
             if (context.payload.pull_request) {
               github.rest.issues.createComment({
@@ -437,4 +457,3 @@ jobs:
                 body: body
               });
             }
-
