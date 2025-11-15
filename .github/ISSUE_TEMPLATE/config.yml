@@ -6,3 +6,9 @@ contact_links:
   - name: 💬 Discussions
     url: https://github.com/your-org/sample-app/discussions
     about: Ask questions and discuss ideas
+issue_templates:
+  - name: Root Cause Analysis (RCA)
+    description: Document root cause analysis for a failing PR or system issue
+    title: '[RCA] '
+    labels: ['rca', 'investigation']
+    filename: rca-root-cause-analysis.md
