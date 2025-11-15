@@ -24,7 +24,8 @@ if (!process.env.DATABASE_URL) {
 // Prisma can have issues with Transaction Mode (port 6543) connections
 // Using pg directly gives us more control and better error messages
 const { Client } = require('pg')
-const dns = require('dns').promises
+const dns = require('dns')
+const dnsPromises = require('dns').promises
 
 async function createSchema() {
   const schemaName = process.env.SCHEMA_NAME
@@ -61,7 +62,7 @@ async function createSchema() {
     console.log(`🔍 Resolving hostname to IPv4: ${hostname}`)
     // Use dns.lookup with family: 4 to force IPv4 resolution
     // This works better than resolve4 when both IPv4 and IPv6 exist
-    const { address } = await dns.lookup(hostname, { family: 4 })
+    const { address } = await dnsPromises.lookup(hostname, { family: 4 })
     resolvedHost = address
     console.log(`✅ Resolved to IPv4: ${resolvedHost}`)
   } catch (resolveError) {
