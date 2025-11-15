@@ -12,7 +12,7 @@ Object.assign(navigator, {
 
 // Mock react-syntax-highlighter
 jest.mock('react-syntax-highlighter', () => ({
-  Prism: ({ children, language, style }: any) => (
+  Prism: ({ children, language }: any) => (
     <pre data-testid="syntax-highlighter" data-language={language}>
       {children}
     </pre>

@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Toast, ToastContainer, ToastVariant } from '@/components/ui/toast'
+import { Toast, ToastContainer } from '@/components/ui/toast'
 
 describe('Toast', () => {
   beforeEach(() => {
