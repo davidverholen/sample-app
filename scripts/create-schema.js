@@ -42,8 +42,13 @@ async function createSchema() {
 
   // Create pg Client with explicit connection string
   // pg handles Transaction Mode (port 6543) connections better than Prisma
+  // CRITICAL: Force IPv4 (family: 4) because GitHub Actions runners may not have IPv6 connectivity
+  // Supabase resolves to both IPv4 and IPv6, but we need IPv4 for GitHub Actions
   const client = new Client({
     connectionString: databaseUrl,
+    // Force IPv4 to avoid ENETUNREACH errors on GitHub Actions
+    // GitHub Actions runners may not have IPv6 connectivity
+    family: 4, // Use IPv4 only
     // Disable prepared statements for Transaction Mode
     // Transaction Mode (port 6543) doesn't support prepared statements
     statement_timeout: 30000, // 30 seconds
