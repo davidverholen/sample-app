@@ -15,11 +15,7 @@
       "deployment": "Vercel / AWS / Docker"
     },
     "team_structure": {
-      "leadership": [
-        "requirements-engineering",
-        "solution-architecture",
-        "technical-lead"
-      ],
+      "leadership": ["requirements-engineering", "solution-architecture", "technical-lead"],
       "development": [
         "nextjs-frontend",
         "backend-api",
@@ -144,4 +140,3 @@
     }
   }
 }
-

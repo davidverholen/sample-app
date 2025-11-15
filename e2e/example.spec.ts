@@ -6,4 +6,3 @@ test('homepage loads', async ({ page }) => {
   // Expect a title "to contain" a substring.
   await expect(page).toHaveTitle(/Sample SaaS App/)
 })
-

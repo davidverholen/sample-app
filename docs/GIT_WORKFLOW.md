@@ -17,8 +17,9 @@ This document defines the Git workflow, branching strategy, and change managemen
 ### Branch Types
 
 #### `main` (Production)
+
 - **Purpose**: Production-ready code only
-- **Protection**: 
+- **Protection**:
   - Requires PR approval (minimum 1 reviewer)
   - Requires passing CI/CD checks
   - No direct commits allowed
@@ -27,14 +28,16 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Naming**: `main`
 
 #### `develop` (Development)
+
 - **Purpose**: Integration branch for features
-- **Protection**: 
+- **Protection**:
   - Requires PR approval for non-team members
   - Requires passing CI checks
 - **Deployment**: Auto-deploys to staging environment
 - **Naming**: `develop`
 
 #### `feature/*` (Feature Branches)
+
 - **Purpose**: New features or enhancements
 - **Naming**: `feature/issue-number-short-description`
   - Example: `feature/123-user-authentication`
@@ -44,6 +47,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `bugfix/*` (Bug Fix Branches)
+
 - **Purpose**: Bug fixes for `develop` branch
 - **Naming**: `bugfix/issue-number-short-description`
   - Example: `bugfix/789-login-error`
@@ -52,6 +56,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `hotfix/*` (Hotfix Branches)
+
 - **Purpose**: Critical production fixes
 - **Naming**: `hotfix/issue-number-short-description`
   - Example: `hotfix/999-security-patch`
@@ -60,6 +65,7 @@ This document defines the Git workflow, branching strategy, and change managemen
 - **Lifecycle**: Delete after merge
 
 #### `release/*` (Release Branches)
+
 - **Purpose**: Prepare new production release
 - **Naming**: `release/v1.2.3` or `release/v1.2.3-rc.1`
 - **Source**: Branch from `develop`
@@ -195,6 +201,7 @@ Follow the same convention as commit messages:
 ```
 
 Examples:
+
 - `feat(auth): add password reset functionality`
 - `fix(api): resolve user validation error`
 - `refactor(ui): extract Button component`
@@ -317,6 +324,7 @@ git push origin release/v1.2.3
 For critical production issues:
 
 1. Create hotfix branch from `main`:
+
    ```bash
    git checkout main
    git pull origin main
@@ -331,6 +339,7 @@ For critical production issues:
    - Fast-track review process
 
 4. Merge to `main` and tag:
+
    ```bash
    git tag -a v1.2.4 -m "Hotfix v1.2.4"
    git push origin v1.2.4
@@ -351,17 +360,21 @@ Maintain `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/
 ## [1.2.3] - 2024-01-15
 
 ### Added
+
 - User authentication with OAuth2
 - Dashboard analytics
 
 ### Changed
+
 - Improved API response times
 
 ### Fixed
+
 - Login error handling
 - Database connection pooling
 
 ### Security
+
 - Updated dependencies with security patches
 ```
 
@@ -369,7 +382,7 @@ Maintain `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/
 
 ### For Authors
 
-1. **Keep PRs Small**: 
+1. **Keep PRs Small**:
    - Focused on single feature/fix
    - Easier to review
    - Faster to merge
@@ -469,6 +482,7 @@ Automated checks on every PR:
 ### GitHub Actions Workflows
 
 See `.github/workflows/` for:
+
 - `ci.yml`: Continuous Integration
 - `release.yml`: Release automation
 - `security.yml`: Security scanning
@@ -509,14 +523,14 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 
 ### Enforcement Summary
 
-| Rule | Local Hook | CI/CD | GitHub Protection |
-|------|------------|-------|-------------------|
-| Commit message format | ✅ commit-msg | ✅ Yes | ⚠️ Optional |
-| Code quality | ✅ pre-commit | ✅ Yes | ✅ Yes |
-| Branch naming | ✅ pre-push | ❌ No | ⚠️ Optional |
-| Direct commits to main/develop | ✅ pre-push | ❌ No | ✅ Yes |
-| PR requirements | ❌ No | ✅ Yes | ✅ Yes |
-| Required reviews | ❌ No | ❌ No | ✅ Yes |
+| Rule                           | Local Hook    | CI/CD  | GitHub Protection |
+| ------------------------------ | ------------- | ------ | ----------------- |
+| Commit message format          | ✅ commit-msg | ✅ Yes | ⚠️ Optional       |
+| Code quality                   | ✅ pre-commit | ✅ Yes | ✅ Yes            |
+| Branch naming                  | ✅ pre-push   | ❌ No  | ⚠️ Optional       |
+| Direct commits to main/develop | ✅ pre-push   | ❌ No  | ✅ Yes            |
+| PR requirements                | ❌ No         | ✅ Yes | ✅ Yes            |
+| Required reviews               | ❌ No         | ❌ No  | ✅ Yes            |
 
 **Note**: Hooks can be bypassed with `--no-verify`, but this should only be used in emergencies. GitHub protection rules cannot be bypassed (except by repository admins).
 
@@ -524,7 +538,7 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 
 ### General
 
-1. **Keep Branches Clean**: 
+1. **Keep Branches Clean**:
    - One feature per branch
    - Regular commits
    - Meaningful commit messages
@@ -566,6 +580,7 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 ### Common Issues
 
 1. **Merge Conflicts**:
+
    ```bash
    git checkout develop
    git pull origin develop
@@ -591,4 +606,3 @@ See [GitHub Branch Protection Setup](./GITHUB_BRANCH_PROTECTION.md) for detailed
 - [Semantic Versioning](https://semver.org/)
 - [Keep a Changelog](https://keepachangelog.com/)
 - [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
-

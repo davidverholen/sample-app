@@ -54,4 +54,3 @@ assignees: ''
 - [ ] 🟠 High (affects major functionality)
 - [ ] 🟡 Medium (affects minor functionality)
 - [ ] 🟢 Low (cosmetic or minor issue)
-

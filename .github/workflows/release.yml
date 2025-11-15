@@ -86,4 +86,3 @@ jobs:
           name: build-${{ steps.get_version.outputs.version }}
           path: .next
           retention-days: 30
-

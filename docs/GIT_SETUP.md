@@ -41,6 +41,7 @@ ls -la .husky/
 ```
 
 You should see:
+
 - `pre-commit`
 - `commit-msg`
 - `pre-push`
@@ -69,6 +70,7 @@ git push -u origin develop
 ### Set Up Branch Protection
 
 In GitHub:
+
 1. Go to Settings → Branches
 2. Add branch protection rule for `main`:
    - Require pull request reviews (1 reviewer minimum)
@@ -215,19 +217,23 @@ git push
 ### Husky Hooks Not Running
 
 1. Check if Husky is installed:
+
    ```bash
    npm list husky
    ```
 
 2. Reinstall Husky:
+
    ```bash
    npm run prepare
    ```
 
 3. Check Git hooks path:
+
    ```bash
    git config core.hooksPath
    ```
+
    Should be `.husky`
 
 4. Set hooks path manually:
@@ -258,12 +264,14 @@ git push
 ## Best Practices
 
 1. **Always Pull Before Creating Branch**:
+
    ```bash
    git checkout develop
    git pull origin develop
    ```
 
 2. **Keep Branches Up to Date**:
+
    ```bash
    git fetch origin
    git rebase origin/develop
@@ -290,4 +298,3 @@ git push
 - [Conventional Commits](https://www.conventionalcommits.org/)
 - [Semantic Versioning](https://semver.org/)
 - [Husky Documentation](https://typicode.github.io/husky/)
-
