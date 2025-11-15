@@ -44,13 +44,25 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           chmod +x scripts/create-supabase-preview.sh
+          # Run script - it writes outputs to GITHUB_OUTPUT
           ./scripts/create-supabase-preview.sh \
             "${{ github.head_ref }}" \
             "${{ github.event.pull_request.number }}" \
             "${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
             "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+          # Verify outputs were written
+          if [ -f "$GITHUB_OUTPUT" ]; then
+            echo "✅ Outputs written to GITHUB_OUTPUT"
+            # Show what was written (without sensitive data)
+            grep -v "DATABASE_URL" "$GITHUB_OUTPUT" || true
+          else
+            echo "❌ GITHUB_OUTPUT file not found"
+            exit 1
+          fi
         continue-on-error: false
 
       - name: Wait for Supabase preview to be ready

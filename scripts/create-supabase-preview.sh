@@ -88,7 +88,7 @@ if echo "$RESPONSE" | grep -q '"id"'; then
   if [ -n "$DB_PASSWORD" ] && [ -n "$DB_HOST" ]; then
     DATABASE_URL="postgresql://postgres.${PROJECT_ID}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
     {
-      echo "DATABASE_URL=$DATABASE_URL"
+      echo "database-url=$DATABASE_URL"
       echo "instance-name=$INSTANCE_NAME"
       echo "project-id=$PROJECT_ID"
     } >> "$GITHUB_OUTPUT"
@@ -134,13 +134,16 @@ if [ -n "$SUPABASE_PROJECT_REF" ]; then
   DATABASE_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
   
   {
-    echo "DATABASE_URL=$DATABASE_URL"
+    echo "database-url=$DATABASE_URL"
     echo "instance-name=$INSTANCE_NAME"
     echo "schema-name=$SCHEMA_NAME"
   } >> "$GITHUB_OUTPUT"
   echo "✅ Using shared database with branch schema: $SCHEMA_NAME"
   echo "⚠️  Note: Schema '$SCHEMA_NAME' will be created during migration step"
-  echo "DATABASE_URL=$DATABASE_URL" >&2
+  # Output to stdout for workflow to capture
+  echo "::notice::DATABASE_URL=$DATABASE_URL"
+  echo "::notice::instance-name=$INSTANCE_NAME"
+  echo "DATABASE_URL=$DATABASE_URL"
   exit 0
 fi
 
