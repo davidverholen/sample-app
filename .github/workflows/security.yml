@@ -36,8 +36,23 @@ jobs:
           if [ -f npm-audit.json ]; then
             echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            vulnerabilities=$(cat npm-audit.json | jq -r '.metadata.vulnerabilities | to_entries | map("\(.key): \(.value)") | .[]' 2>/dev/null || echo "Unable to parse")
-            if [ -n "$vulnerabilities" ]; then
+
+            parse_error=0
+            vulnerabilities=$(jq -r '
+              (.metadata.vulnerabilities // {}) as $v |
+              if ($v == {}) then "" else
+                $v | to_entries | map("\(.key): \(.value)") | join("\n")
+              end
+            ' npm-audit.json 2>/dev/null) || parse_error=1
+
+            total_vulnerabilities=$(jq -r '
+              (.metadata.vulnerabilities // {}) as $v |
+              reduce ($v[]?) as $count (0; . + ($count // 0))
+            ' npm-audit.json 2>/dev/null) || parse_error=1
+
+            if [ "$parse_error" -ne 0 ] || ! [[ "$total_vulnerabilities" =~ ^[0-9]+$ ]]; then
+              echo "⚠️ Unable to parse npm audit output." >> $GITHUB_STEP_SUMMARY
+            elif [ "$total_vulnerabilities" -gt 0 ]; then
               echo "### Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               echo "$vulnerabilities" >> $GITHUB_STEP_SUMMARY

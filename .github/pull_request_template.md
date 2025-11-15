@@ -52,11 +52,29 @@ Closes #<!-- issue number -->
 ### Code Quality
 
 - [ ] Code follows project style guidelines
-- [ ] Self-review completed
+- [ ] **Self-review completed** (MANDATORY for solo developers - see Self-Review Checklist below)
 - [ ] Code is commented, particularly in hard-to-understand areas
 - [ ] No console.log or debug code
 - [ ] No commented-out code
 - [ ] No TODO comments without issue references
+
+### Self-Review Checklist (Solo Developers)
+
+**⚠️ MANDATORY**: Complete this checklist before merging:
+
+- [ ] **Code Review**: Reviewed all changed files line-by-line
+- [ ] **Functionality**: Verified the code works as intended
+- [ ] **Testing**: All tests pass and coverage meets threshold (80%+)
+- [ ] **Code Quality**: No linting errors, proper formatting, TypeScript strict mode
+- [ ] **Documentation**: Updated README/CHANGELOG/docs if needed
+- [ ] **Security**: No secrets committed, input validation implemented
+- [ ] **Performance**: No obvious performance issues
+- [ ] **Accessibility**: UI changes are accessible (WCAG 2.1 AA)
+- [ ] **Error Handling**: Error cases are handled appropriately
+- [ ] **Edge Cases**: Edge cases are considered and tested
+- [ ] **CI Checks**: All CI/CD checks pass
+- [ ] **Git Standards**: Commit messages and branch name follow conventions
+- [ ] **Wait Time**: Waited at least 1 hour after creating PR (fresh eyes)
 
 ### Documentation
 
