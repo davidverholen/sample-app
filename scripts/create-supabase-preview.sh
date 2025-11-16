@@ -158,8 +158,24 @@ if command -v jq >/dev/null 2>&1; then
   # Extract project reference ID from API response (required for hostname construction)
   # Supabase API may return 'ref' field, but if fetching by project ref, it might not be in response
   # In that case, we use SUPABASE_PROJECT_REF (which we used to fetch the project)
-  # Try multiple possible field names for project reference
-  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // .id // ""' 2>/dev/null || echo "")
+  # CRITICAL: Do NOT use .id field as fallback - it's a UUID, not a project reference
+  # Project references are short alphanumeric strings (e.g., 'abcdefghijklmnop')
+  # UUIDs look like '12345678-1234-1234-1234-123456789abc' and are invalid for hostnames
+  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // ""' 2>/dev/null || echo "")
+  
+  # Validate extracted ref format - must be alphanumeric (possibly with hyphens), NOT a UUID
+  # UUIDs contain hyphens in the pattern: 8-4-4-4-12 (e.g., '12345678-1234-1234-1234-123456789abc')
+  # Project refs are typically 20-character alphanumeric strings without hyphens in UUID pattern
+  if [ -n "$PROJECT_REF_ID" ] && [ "$PROJECT_REF_ID" != "null" ] && [ "$PROJECT_REF_ID" != "" ]; then
+    # Check if it looks like a UUID (contains hyphens in UUID pattern)
+    if echo "$PROJECT_REF_ID" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+      echo "⚠️  Warning: Extracted value looks like a UUID, not a project reference"
+      echo "   Extracted: $PROJECT_REF_ID"
+      echo "   This is likely the project ID, not the reference ID"
+      echo "   Using SUPABASE_PROJECT_REF instead"
+      PROJECT_REF_ID=""
+    fi
+  fi
   
   # If PROJECT_REF_ID is empty or null, use SUPABASE_PROJECT_REF (which should be the project reference)
   # This is the most reliable source since we used it to fetch the project
@@ -172,7 +188,8 @@ if command -v jq >/dev/null 2>&1; then
     # Validate that extracted ref matches SUPABASE_PROJECT_REF (they should be the same)
     if [ "$PROJECT_REF_ID" != "$SUPABASE_PROJECT_REF" ]; then
       echo "⚠️  Warning: Extracted ref ($PROJECT_REF_ID) doesn't match SUPABASE_PROJECT_REF ($SUPABASE_PROJECT_REF)"
-      echo "   Using extracted ref from API response"
+      echo "   Using SUPABASE_PROJECT_REF to ensure consistency"
+      PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
     fi
   fi
   
@@ -246,9 +263,26 @@ if [ -z "$PROJECT_REF_ID" ] || [ "$PROJECT_REF_ID" = "null" ] || [ "$PROJECT_REF
   exit 1
 fi
 
-# Validate PROJECT_REF_ID format (should be alphanumeric, possibly with hyphens)
+# Validate PROJECT_REF_ID format (should be alphanumeric, possibly with hyphens, NOT a UUID)
 # Supabase project refs are typically 20-character alphanumeric strings
-if ! echo "$PROJECT_REF_ID" | grep -qE '^[a-z0-9-]{10,}$'; then
+# UUIDs are invalid and will cause DNS resolution failures
+if echo "$PROJECT_REF_ID" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+  echo ""
+  echo "❌ Error: Project reference ID appears to be a UUID, not a project reference"
+  echo "   PROJECT_REF_ID: '$PROJECT_REF_ID'"
+  echo "   This will cause DNS resolution failures (hostname: db.$PROJECT_REF_ID.supabase.co)"
+  echo ""
+  echo "💡 This indicates:"
+  echo "   1. API response returned project ID (UUID) instead of project reference"
+  echo "   2. SUPABASE_PROJECT_REF secret may be incorrect"
+  echo ""
+  echo "🔧 Troubleshooting:"
+  echo "   1. Verify SUPABASE_PROJECT_REF in GitHub secrets"
+  echo "   2. Check project reference in Supabase Dashboard → Project Settings → General"
+  echo "   3. Project reference should be a short alphanumeric string (e.g., 'abcdefghijklmnop')"
+  echo "   4. Project reference is NOT the same as project ID (UUID)"
+  exit 1
+elif ! echo "$PROJECT_REF_ID" | grep -qE '^[a-z0-9-]{10,}$'; then
   echo "⚠️  Warning: Project reference ID format may be incorrect"
   echo "   PROJECT_REF_ID: '$PROJECT_REF_ID'"
   echo "   Expected: Alphanumeric string (10+ characters)"
