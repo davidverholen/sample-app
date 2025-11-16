@@ -6,6 +6,13 @@ Perform a comprehensive root cause analysis (RCA) of failures in the current ope
 
 **MANDATORY**: Follow a systematic investigation approach. Document all findings and post them directly to the PR as a comment. Do NOT create local files. Do NOT implement fixes - only investigate and document.
 
+**IMPORTANT**: This command automatically reviews all previous RCA comments in the PR before starting investigation. This ensures:
+
+- Previous solutions that didn't work are not repeated
+- New investigation builds on previous findings
+- Why previous attempts failed is documented
+- The new RCA comment references and explains differences from previous attempts
+
 ## Output Location
 
 **RCA findings MUST be posted directly to the PR as a comment** - do not create local files in `docs/rca/`.
@@ -32,7 +39,92 @@ REPO_OWNER=$(gh repo view --json owner --jq '.owner.login')
 REPO_NAME=$(gh repo view --json name --jq '.name')
 ```
 
-### 2. Check CI/CD Status
+### 2. Review Previous RCA Comments
+
+**CRITICAL**: Before starting investigation, review all previous RCA comments in this PR to understand what solutions have already been attempted and why they didn't work. This prevents repeating failed solutions.
+
+```bash
+# Get all PR comments
+echo "🔍 Reviewing previous RCA comments for PR #${PR_NUMBER}..."
+
+# Fetch all comments and filter for RCA comments
+PREVIOUS_RCA_COMMENTS=$(gh pr view $PR_NUMBER --json comments --jq '.comments[] | select(.body | contains("🔍 Root Cause Analysis") or contains("## 🔍 Root Cause Analysis") or contains("Root Cause Analysis")) | {
+  id: .id,
+  author: .author.login,
+  createdAt: .createdAt,
+  body: .body
+}')
+
+# Count previous RCA comments
+RCA_COUNT=$(echo "$PREVIOUS_RCA_COMMENTS" | jq -s 'length')
+echo "📋 Found ${RCA_COUNT} previous RCA comment(s)"
+
+# Extract attempted solutions from each RCA comment
+if [ "$RCA_COUNT" -gt 0 ]; then
+  echo ""
+  echo "📝 Previous RCA Attempts:"
+  echo "=========================="
+
+  # Process each RCA comment
+  echo "$PREVIOUS_RCA_COMMENTS" | jq -r -s '.[] | "
+  ---
+  RCA Comment #\(.id) by @\(.author) at \(.createdAt)
+  ---
+  "'
+
+  # Extract root causes and solutions from each comment
+  # Use a more robust extraction method
+  ATTEMPTED_SOLUTIONS=$(echo "$PREVIOUS_RCA_COMMENTS" | jq -r -s '.[] |
+    "## Previous Attempt #\(.id) by @\(.author) at \(.createdAt):
+
+**Root Cause Identified:**
+\(.body | split("### Root Cause")[1] // "" | split("###")[0] // "Not found" | gsub("^[\\s]*"; "") | gsub("[\\s]*$"; ""))
+
+**Recommended Solution:**
+\(.body | split("### Recommended Solution")[1] // "" | split("###")[0] // "Not found" | gsub("^[\\s]*"; "") | gsub("[\\s]*$"; ""))
+
+**Files Changed:**
+\(.body | split("### Files Requiring Changes")[1] // "" | split("###")[0] // "Not found" | gsub("^[\\s]*"; "") | gsub("[\\s]*$"; ""))
+"')
+
+  # Save to temporary file for reference during investigation
+  echo "$ATTEMPTED_SOLUTIONS" > /tmp/previous_rca_attempts.md
+
+  echo ""
+  echo "📄 Previous attempts saved to /tmp/previous_rca_attempts.md"
+  echo ""
+  echo "⚠️  IMPORTANT: Review previous attempts and ensure new investigation:"
+  echo "   - Does NOT repeat solutions that were already tried"
+  echo "   - Addresses why previous solutions didn't work"
+  echo "   - Builds on previous findings"
+  echo ""
+
+  # Display summary of attempted solutions
+  echo "📊 Summary of Previous Attempts:"
+  echo "$ATTEMPTED_SOLUTIONS" | grep -E "## Previous Attempt|Root Cause Identified:|Recommended Solution:" | head -20
+else
+  echo "✅ No previous RCA comments found - this is the first investigation"
+fi
+```
+
+**Document Previous Attempts**:
+
+When reviewing previous RCA comments, extract and document:
+
+- **Root causes identified** in each previous RCA
+- **Solutions recommended** in each previous RCA
+- **Files that were changed** based on each previous RCA
+- **Why previous solutions didn't work** (if mentioned in follow-up comments or if the issue persists)
+- **What new information is available** that wasn't available before
+
+**Use This Information**:
+
+- **Avoid repeating solutions**: If a solution was already tried, don't recommend it again unless new information suggests it should work
+- **Build on previous findings**: Use previous root cause analysis as a starting point
+- **Address why previous attempts failed**: If a solution was tried but didn't work, investigate why it failed
+- **Reference previous attempts**: In the new RCA comment, reference previous attempts and explain why the new approach is different
+
+### 3. Check CI/CD Status
 
 ```bash
 # View all checks for the PR
@@ -359,6 +451,25 @@ Create a concise RCA comment with the following structure (keep it short and pre
 
 [Brief description of the failure - 1-2 sentences]
 
+### Previous Attempts
+
+[If previous RCA comments exist, include this section:]
+
+**Previous RCA Comments Found**: [Number] previous investigation(s)
+
+**What Was Tried Before**:
+
+- [Previous attempt 1]: [Solution that was attempted] - **Why it didn't work**: [Reason or "Still investigating"]
+- [Previous attempt 2]: [Solution that was attempted] - **Why it didn't work**: [Reason or "Still investigating"]
+
+**Why This Investigation Is Different**:
+
+- [New information discovered]
+- [Different approach based on previous findings]
+- [What changed since last attempt]
+
+[If no previous RCA comments exist, omit this section]
+
 ### Root Cause
 
 **PRIMARY**: [Clear statement of the root cause - 1-2 sentences]
@@ -369,10 +480,21 @@ Create a concise RCA comment with the following structure (keep it short and pre
 - [Key evidence point 2 - what was tested/validated]
 - [Reference to official documentation or agent spec]
 
+**Why Previous Solutions Didn't Work** (if applicable):
+
+- [Previous solution 1]: [Why it failed - specific reason]
+- [Previous solution 2]: [Why it failed - specific reason]
+
 ### Recommended Solution
 
 [Solution description with implementation steps - be specific]
 [Include exact format/configuration needed]
+
+**Why This Solution Will Work** (if previous attempts exist):
+
+- [How this differs from previous attempts]
+- [What new information supports this approach]
+- [Why previous solutions failed and this won't]
 
 ### Files Requiring Changes
 
@@ -430,15 +552,18 @@ Create a concise RCA comment with the following structure (keep it short and pre
 
 ## Investigation Best Practices
 
-1. **Validate Assumptions with Tooling**: Use CLI tools to test assumptions, don't just read code
-2. **Read Documentation First**: Check `docs/` directory and agent specs for relevant information
-3. **Update Agent Specs Immediately**: If knowledge gaps are found, add documentation to agent specs right away
-4. **Be Systematic**: Follow the investigation steps in order
-5. **Verify with CLI Tools**: Test connection strings, API calls, configurations using actual tools
-6. **Compare with Working Examples**: Always compare with known working code
-7. **Research Official Documentation**: Check official documentation for requirements
-8. **Identify Root Cause**: Don't just identify symptoms - find the root cause
-9. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
+1. **Review Previous RCA Comments First**: Always check for previous RCA comments in the PR before starting investigation. This prevents repeating failed solutions and helps build on previous findings.
+2. **Validate Assumptions with Tooling**: Use CLI tools to test assumptions, don't just read code
+3. **Read Documentation First**: Check `docs/` directory and agent specs for relevant information
+4. **Update Agent Specs Immediately**: If knowledge gaps are found, add documentation to agent specs right away
+5. **Be Systematic**: Follow the investigation steps in order
+6. **Verify with CLI Tools**: Test connection strings, API calls, configurations using actual tools
+7. **Compare with Working Examples**: Always compare with known working code
+8. **Research Official Documentation**: Check official documentation for requirements
+9. **Identify Root Cause**: Don't just identify symptoms - find the root cause
+10. **Avoid Repeating Failed Solutions**: If a solution was already tried in a previous RCA, don't recommend it again unless you have new information that suggests it should work
+11. **Explain Why Previous Attempts Failed**: If previous RCA comments exist, investigate why those solutions didn't work and address those issues in your new analysis
+12. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
 
 ## Validation and Testing
 
@@ -549,7 +674,65 @@ act -l  # List workflows
 
 ```bash
 # Post concise RCA directly to PR
-gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
+# Include previous attempts section if previous RCA comments exist
+
+# Check if previous RCA comments exist
+PREVIOUS_RCA_COUNT=$(gh pr view $PR_NUMBER --json comments --jq '.comments[] | select(.body | contains("🔍 Root Cause Analysis") or contains("Root Cause Analysis")) | .id' | wc -l | tr -d ' ')
+
+if [ "$PREVIOUS_RCA_COUNT" -gt 0 ]; then
+  # Build previous attempts section from /tmp/previous_rca_attempts.md
+  PREVIOUS_ATTEMPTS_SECTION=$(cat /tmp/previous_rca_attempts.md 2>/dev/null || echo "")
+
+  gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
+
+### Problem Summary
+[Brief description - 1-2 sentences]
+
+### Previous Attempts
+
+**Previous RCA Comments Found**: ${PREVIOUS_RCA_COUNT} previous investigation(s)
+
+**What Was Tried Before**:
+${PREVIOUS_ATTEMPTS_SECTION}
+
+**Why This Investigation Is Different**:
+- [New information discovered]
+- [Different approach based on previous findings]
+- [What changed since last attempt]
+
+### Root Cause
+**PRIMARY**: [Clear statement - 1-2 sentences]
+
+**Evidence** (validated):
+- [Key evidence point 1 - what was tested/validated]
+- [Key evidence point 2 - what was tested/validated]
+- [Reference to official docs or agent spec]
+
+**Why Previous Solutions Didn't Work**:
+- [Previous solution 1]: [Why it failed - specific reason]
+- [Previous solution 2]: [Why it failed - specific reason]
+
+### Recommended Solution
+[Solution with specific implementation steps and exact formats]
+
+**Why This Solution Will Work**:
+- [How this differs from previous attempts]
+- [What new information supports this approach]
+- [Why previous solutions failed and this won't]
+
+### Files Requiring Changes
+- \`path/to/file1\` - [reason - what needs to change]
+- \`path/to/file2\` - [reason - what needs to change]
+
+### Documentation Updates
+[If agent specs were updated: Added [topic] to [agent spec] - see [section]]
+
+### Next Steps
+1. [Action item 1]
+2. [Action item 2]"
+else
+  # No previous RCA comments - use standard format
+  gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
 
 ### Problem Summary
 [Brief description - 1-2 sentences]
@@ -575,9 +758,10 @@ gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
 ### Next Steps
 1. [Action item 1]
 2. [Action item 2]"
+fi
 ```
 
-**Keep it concise but precise** - Focus on root cause (validated), solution (with exact formats), and actionable next steps. Include validation evidence, not assumptions.
+**Keep it concise but precise** - Focus on root cause (validated), solution (with exact formats), and actionable next steps. Include validation evidence, not assumptions. **Always reference previous attempts** if they exist to avoid repeating failed solutions.
 
 ### Create GitHub Issue (Rare - Only for System-Wide Issues)
 

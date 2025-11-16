@@ -62,16 +62,35 @@ if echo "$PROJECT_DETAILS" | grep -q '"error"'; then
   exit 1
 fi
 
-# Extract DB_HOST from nested database.host structure
-DB_OBJECT=$(echo "$PROJECT_DETAILS" | grep -o '"database":{[^}]*}' || echo "")
-DB_HOST=$(echo "$DB_OBJECT" | grep -o '"host":"[^"]*' | cut -d'"' -f4 || echo "")
-DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
-
-if [ -z "$DB_HOST" ]; then
-  echo "❌ Error: Failed to extract database host from project details"
-  echo "Response: $PROJECT_DETAILS"
-  exit 1
+# Extract project reference ID from API response (required for hostname construction)
+# Supabase API returns 'ref' field containing the project reference ID (short alphanumeric string)
+# This is different from project ID (UUID) and is required for database hostname construction
+if command -v jq >/dev/null 2>&1; then
+  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // ""' 2>/dev/null || echo "")
+  
+  # Fallback to SUPABASE_PROJECT_REF if not found in API response
+  if [ -z "$PROJECT_REF_ID" ] || [ "$PROJECT_REF_ID" = "null" ] || [ "$PROJECT_REF_ID" = "" ]; then
+    echo "⚠️  Warning: Project reference ID not found in API response, using SUPABASE_PROJECT_REF"
+    PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
+  else
+    echo "✅ Extracted project reference ID from API response: $PROJECT_REF_ID"
+  fi
+  
+  # Extract DB_NAME from API response (optional, defaults to postgres)
+  DB_NAME=$(echo "$PROJECT_DETAILS" | jq -r '.database.db_name // .db_name // .database_name // "postgres"' 2>/dev/null || echo "postgres")
+else
+  # Fallback if jq is not available (shouldn't happen in GitHub Actions)
+  echo "⚠️  Warning: jq not available, using SUPABASE_PROJECT_REF for hostname"
+  PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
+  DB_NAME=$(echo "$PROJECT_DETAILS" | grep -o '"db_name":"[^"]*' | cut -d'"' -f4 || echo "postgres")
 fi
+
+# Construct DB_HOST from project reference ID (extracted from API or fallback to SUPABASE_PROJECT_REF)
+# Supabase Transaction Mode hosts are ALWAYS: db.[PROJECT-REF].supabase.co
+# The project reference ID is a short alphanumeric string (not the UUID project ID)
+# This must be extracted from the API response to ensure correct hostname format
+DB_HOST="db.${PROJECT_REF_ID}.supabase.co"
+echo "✅ Using database host: $DB_HOST (constructed from project reference ID)"
 
 # Construct main database connection string
 # Use Transaction Mode pooling (port 6543) for external IPs like GitHub Actions runners

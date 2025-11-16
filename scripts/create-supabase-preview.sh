@@ -155,11 +155,25 @@ if command -v jq >/dev/null 2>&1; then
   PROJECT_STATUS=$(echo "$PROJECT_DETAILS" | jq -r '.status // .state // "unknown"' 2>/dev/null || echo "unknown")
   PROJECT_ID=$(echo "$PROJECT_DETAILS" | jq -r '.id // .project_id // "unknown"' 2>/dev/null || echo "unknown")
   
+  # Extract project reference ID from API response (required for hostname construction)
+  # Supabase API returns 'ref' field containing the project reference ID (short alphanumeric string)
+  # This is different from project ID (UUID) and is required for database hostname construction
+  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // ""' 2>/dev/null || echo "")
+  
+  # Fallback to SUPABASE_PROJECT_REF if not found in API response
+  if [ -z "$PROJECT_REF_ID" ] || [ "$PROJECT_REF_ID" = "null" ] || [ "$PROJECT_REF_ID" = "" ]; then
+    echo "⚠️  Warning: Project reference ID not found in API response, using SUPABASE_PROJECT_REF"
+    PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
+  else
+    echo "✅ Extracted project reference ID from API response"
+  fi
+  
   # Log project information (without exposing secrets)
   echo "✅ Project details retrieved:"
   echo "   Name: $PROJECT_NAME"
   echo "   Status: $PROJECT_STATUS"
   echo "   ID: $PROJECT_ID"
+  echo "   Reference ID: $PROJECT_REF_ID"
   
   # Validate project status
   if [ "$PROJECT_STATUS" = "INACTIVE" ] || [ "$PROJECT_STATUS" = "PAUSED" ] || [ "$PROJECT_STATUS" = "paused" ]; then
@@ -196,13 +210,16 @@ else
     echo "Response: $PROJECT_DETAILS" | head -10
     exit 1
   fi
+  # Use SUPABASE_PROJECT_REF as fallback
+  PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
 fi
 
-# Always construct DB_HOST from project ref (standard Supabase format)
+# Construct DB_HOST from project reference ID (extracted from API or fallback to SUPABASE_PROJECT_REF)
 # Supabase Transaction Mode hosts are ALWAYS: db.[PROJECT-REF].supabase.co
-# This format is standardized and doesn't need to be extracted from the API
-DB_HOST="db.${SUPABASE_PROJECT_REF}.supabase.co"
-echo "✅ Using database host: $DB_HOST (constructed from project ref)"
+# The project reference ID is a short alphanumeric string (not the UUID project ID)
+# This must be extracted from the API response to ensure correct hostname format
+DB_HOST="db.${PROJECT_REF_ID}.supabase.co"
+echo "✅ Using database host: $DB_HOST (constructed from project reference ID)"
 
 # Extract DB_NAME from API response (optional, defaults to postgres)
 # This is just for informational purposes, we always use "postgres" as the database name
