@@ -8,7 +8,16 @@ Fix issues in the current open, failing GitHub pull request using the root cause
 
 1. **First run `rca-pr`** to perform root cause analysis and generate the RCA document
 2. **Then run `debug-pr`** to implement fixes based on the RCA findings
-3. Use the RCA document to guide all fixes - it contains the root cause and recommended solutions
+3. **Test fixes locally with `act`** before committing (reproduce failure, implement fix, verify fix works)
+4. Use the RCA document to guide all fixes - it contains the root cause and recommended solutions
+5. **Learn from the issue**: Understand why the agent built this in and update agent specs if needed
+
+## Goals
+
+1. **Fix the issue**: Implement the recommended solution from the RCA
+2. **Test locally first**: Use `act` to reproduce the failure, implement fix, and verify it works before committing
+3. **Learn from the issue**: Understand why this issue was built in by the agent
+4. **Update agent specs**: If knowledge gaps are found, add documentation to prevent recurrence
 
 ## Prerequisites
 
@@ -164,11 +173,161 @@ echo "=== Root Cause ==="
 grep -A 5 "PRIMARY ROOT CAUSE\|Root Cause" /tmp/rca_content.md | head -10
 
 echo "=== Recommended Solutions ==="
-grep -A 15 "Recommended Solution\|Recommended Solutions" /tmp/rca_content.md | head -20
+grep -A 15 "Recommended Solution\|Recommended Solutions\|Corrective Action" /tmp/rca_content.md | head -20
 
 echo "=== Files Requiring Changes ==="
 grep -A 10 "Files Requiring Changes\|Files to Modify" /tmp/rca_content.md | head -15
 ```
+
+### 2.5: Reproduce Failure Locally with Act (MANDATORY Before Fixing)
+
+**Goal**: Reproduce the exact failure locally using `act` to validate root cause and ensure the fix works. This provides fast feedback without waiting for CI.
+
+**Prerequisites Check**:
+
+```bash
+# Check if act is installed
+if command -v act &> /dev/null; then
+  echo "✅ act is installed"
+  ACT_VERSION=$(act --version)
+  echo "   Version: $ACT_VERSION"
+  USE_ACT=true
+else
+  echo "⚠️  act is not installed - installing or using alternative..."
+  # Try to use local bin/act if available
+  if [ -f "./bin/act" ]; then
+    echo "✅ Found ./bin/act"
+    USE_ACT=true
+  else
+    echo "⚠️  act not found - skipping local reproduction"
+    echo "   Install: https://github.com/nektos/act#installation"
+    echo "   Or use: curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash"
+    USE_ACT=false
+  fi
+fi
+```
+
+**Reproduce Failing Job First**:
+
+```bash
+if [ "$USE_ACT" = true ]; then
+  ACT_CMD=$(command -v act || echo "./bin/act")
+
+  # Extract failing job name from workflow run
+  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' | head -1)
+
+  # Get workflow file name
+  WORKFLOW_NAME=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName')
+  WORKFLOW_FILE=$(echo "$WORKFLOW_NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+  WORKFLOW_PATH=".github/workflows/${WORKFLOW_FILE}.yml"
+
+  # Check if workflow file exists
+  if [ ! -f "$WORKFLOW_PATH" ]; then
+    # Try to find workflow file by matching name
+    WORKFLOW_PATH=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | xargs grep -l "name:.*$WORKFLOW_NAME" | head -1)
+  fi
+
+  # If still not found, use first workflow file
+  if [ -z "$WORKFLOW_PATH" ] || [ ! -f "$WORKFLOW_PATH" ]; then
+    WORKFLOW_PATH=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | head -1)
+  fi
+
+  echo "🔬 Reproducing failing job '$FAILING_JOB' locally with act..."
+  echo "   Workflow: $WORKFLOW_PATH"
+
+  # Create PR event payload
+  cat > /tmp/pr-event.json << EOF
+{
+  "pull_request": {
+    "number": $PR_NUMBER,
+    "head": {
+      "ref": "$BRANCH_NAME"
+    }
+  },
+  "head_ref": "$BRANCH_NAME"
+}
+EOF
+
+  # Check if secrets file exists
+  if [ ! -f ".secrets" ] && [ ! -f ".env.local" ]; then
+    echo "⚠️  No .secrets or .env.local file found"
+    echo "   Create .secrets file with required secrets (one per line: KEY=value)"
+    echo "   Or use: act -s KEY=value for individual secrets"
+  fi
+
+  SECRETS_FILE=""
+  if [ -f ".secrets" ]; then
+    SECRETS_FILE=".secrets"
+  elif [ -f ".env.local" ]; then
+    SECRETS_FILE=".env.local"
+  fi
+
+  # Try failing job first (faster)
+  echo ""
+  echo "🧪 Running failing job '$FAILING_JOB' with act..."
+  if [ -n "$SECRETS_FILE" ]; then
+    $ACT_CMD -j "$FAILING_JOB" -W "$WORKFLOW_PATH" --secret-file "$SECRETS_FILE" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-reproduce.log
+  else
+    echo "⚠️  Running without secrets file - some steps may fail"
+    $ACT_CMD -j "$FAILING_JOB" -W "$WORKFLOW_PATH" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-reproduce.log
+  fi
+
+  # Check if reproduction succeeded
+  if grep -qi "error\|failed\|fatal\|❌" /tmp/act-reproduce.log; then
+    echo ""
+    echo "✅ Reproduced error in failing job"
+    ACT_ERROR=$(grep -iE "error|failed|fatal|❌" /tmp/act-reproduce.log | tail -5)
+    echo "$ACT_ERROR"
+    ACT_REPRODUCED=true
+
+    # Extract key error details
+    echo ""
+    echo "📋 Key error details:"
+    grep -iE "error|failed|fatal" /tmp/act-reproduce.log | grep -v "^[[:space:]]*$" | tail -10
+  else
+    echo ""
+    echo "⚠️  Failing job didn't reproduce - trying full workflow..."
+    # Try full workflow if job-specific reproduction didn't work
+    if [ -n "$SECRETS_FILE" ]; then
+      $ACT_CMD -W "$WORKFLOW_PATH" --secret-file "$SECRETS_FILE" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-workflow.log
+    else
+      $ACT_CMD -W "$WORKFLOW_PATH" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-workflow.log
+    fi
+
+    if grep -qi "error\|failed\|fatal\|❌" /tmp/act-workflow.log; then
+      echo ""
+      echo "✅ Reproduced error in full workflow"
+      ACT_ERROR=$(grep -iE "error|failed|fatal|❌" /tmp/act-workflow.log | tail -5)
+      echo "$ACT_ERROR"
+      ACT_REPRODUCED=true
+    else
+      echo ""
+      echo "⚠️  Could not reproduce locally - may be environment-specific"
+      echo "   Proceeding with fix implementation based on RCA findings"
+      ACT_REPRODUCED=false
+    fi
+  fi
+
+  echo ""
+  echo "📋 Full act output saved to:"
+  echo "   - /tmp/act-reproduce.log (failing job)"
+  if [ -f "/tmp/act-workflow.log" ]; then
+    echo "   - /tmp/act-workflow.log (full workflow)"
+  fi
+else
+  ACT_REPRODUCED=false
+  echo ""
+  echo "⚠️  Skipping local reproduction - act not available"
+  echo "   Proceeding with fix implementation based on RCA findings"
+fi
+```
+
+**Document Reproduction Results**:
+
+- Whether error was reproduced locally (yes/no)
+- Exact error message from act (if reproduced)
+- Differences between local and CI environment (if not reproduced)
+- Validation: Error matches CI logs (yes/no)
 
 ### 3. Check Current CI/CD Status
 
@@ -554,75 +713,136 @@ npm test -- --coverage
 cat /tmp/rca_content.md
 ```
 
-### Step 2: Implement Recommended Solution
+### Step 2: Understand Why Agent Built This In
+
+**CRITICAL**: Before fixing, understand why the agent built this issue in. This helps prevent recurrence and improve agent specifications.
+
+**Investigation Steps**:
+
+```bash
+# 1. Check agent specs for relevant documentation
+echo "🔍 Checking agent specs for relevant documentation..."
+grep -r "keyword\|related-term" .cursor/rules/ --include="*.mdc" | head -20
+
+# 2. Review what changed in the PR that introduced the issue
+echo ""
+echo "📋 Files changed in PR:"
+gh pr diff --name-only
+
+# 3. Check if the issue is related to missing documentation
+echo ""
+echo "🔍 Checking if issue relates to missing agent spec documentation..."
+# Search for related terms in agent specs
+# Example: if issue is about connection strings, search for "connection" in agent specs
+```
+
+**Questions to Answer**:
+
+1. **Was the documentation missing?** Check if agent specs had the necessary information
+2. **Was the documentation unclear?** Check if agent specs were ambiguous or incomplete
+3. **Was the documentation incorrect?** Check if agent specs had wrong information
+4. **Did the agent follow the documentation?** Check if the agent deviated from specs
+5. **Is this a new pattern?** Check if this is a new scenario not covered in specs
+
+**Document Findings**:
+
+- What documentation was missing/unclear/incorrect
+- Why the agent made this mistake
+- What needs to be added to agent specs
+
+### Step 3: Implement Recommended Solution
 
 Based on the RCA document, implement the recommended solution:
 
-1. **Identify the solution** from the "Recommended Solutions" section
+1. **Identify the solution** from the "Recommended Solutions" or "Corrective Action" section
 2. **Review files to change** from the "Files Requiring Changes" section
 3. **Implement the fix** following the RCA guidance
-4. **Test the fix locally** before committing
+4. **Test the fix locally with act** before committing (see Step 4)
 
-### Step 3: Reproduce and Test Locally
+### Step 4: Test Fix Locally with Act (MANDATORY)
 
-**Option A: Test with `act` (Recommended for workflow debugging)**
+**CRITICAL**: After implementing the fix, test it locally with `act` to verify it works before committing. This provides fast feedback and prevents pushing broken fixes.
 
-If `act` is installed, you can run GitHub Actions workflows locally for fast feedback:
+**Test Fix with Act**:
 
 ```bash
-# Checkout the PR branch
-gh pr checkout $PR_NUMBER
+# Ensure we're on the PR branch with the fix
+git status
+# If not on the branch, checkout:
+# gh pr checkout $PR_NUMBER
 
 # Check if act is available
 if command -v act &> /dev/null || [ -f "./bin/act" ]; then
   ACT_CMD=$(command -v act || echo "./bin/act")
 
-  # Create event payload for PR
+  # Get workflow and job info
+  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' | head -1)
+  WORKFLOW_NAME=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName')
+  WORKFLOW_PATH=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | xargs grep -l "name:.*$WORKFLOW_NAME" | head -1)
+
+  if [ -z "$WORKFLOW_PATH" ] || [ ! -f "$WORKFLOW_PATH" ]; then
+    WORKFLOW_PATH=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | head -1)
+  fi
+
+  # Create PR event payload
   cat > /tmp/pr-event.json << EOF
 {
   "pull_request": {
-    "number": $PR_NUMBER
+    "number": $PR_NUMBER,
+    "head": {
+      "ref": "$BRANCH_NAME"
+    }
   },
   "head_ref": "$BRANCH_NAME"
 }
 EOF
 
-  # Get workflow file name from failed run
-  WORKFLOW_FILE=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
-  WORKFLOW_PATH=$(find .github/workflows -name "*${WORKFLOW_FILE}*" -o -name "*.yml" | head -1)
+  # Determine secrets file
+  SECRETS_FILE=""
+  if [ -f ".secrets" ]; then
+    SECRETS_FILE=".secrets"
+  elif [ -f ".env.local" ]; then
+    SECRETS_FILE=".env.local"
+  fi
 
-  # Get failing job name
-  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.[] | select(.conclusion == "failure") | .name' | head -1)
-
-  # Create secrets file (use actual secrets from environment or GitHub)
-  # Note: Never commit secrets file - add to .gitignore
-  cat > .secrets << EOF
-# Add your secrets here (one per line: KEY=value)
-# Or use -s flag to pass secrets directly
-EOF
-
-  echo "🧪 Running workflow locally with act..."
+  echo "🧪 Testing fix with act..."
   echo "   Workflow: $WORKFLOW_PATH"
   echo "   Job: $FAILING_JOB"
   echo ""
 
-  # Run the specific failing job
-  $ACT_CMD -j "$FAILING_JOB" \
-    --secret-file .secrets \
-    -e /tmp/pr-event.json \
-    -W "$WORKFLOW_PATH" \
-    2>&1 | tee /tmp/act-debug.log
+  # Run the failing job to verify fix
+  if [ -n "$SECRETS_FILE" ]; then
+    $ACT_CMD -j "$FAILING_JOB" -W "$WORKFLOW_PATH" --secret-file "$SECRETS_FILE" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-fix-test.log
+  else
+    echo "⚠️  Running without secrets file - some steps may fail"
+    $ACT_CMD -j "$FAILING_JOB" -W "$WORKFLOW_PATH" -e /tmp/pr-event.json 2>&1 | tee /tmp/act-fix-test.log
+  fi
+
+  # Check if fix worked
+  if grep -qi "error\|failed\|fatal\|❌" /tmp/act-fix-test.log; then
+    echo ""
+    echo "❌ Fix did not work - error still present:"
+    grep -iE "error|failed|fatal|❌" /tmp/act-fix-test.log | tail -5
+    echo ""
+    echo "📋 Review /tmp/act-fix-test.log for details"
+    echo "⚠️  Do not commit until fix is verified"
+    FIX_VERIFIED=false
+  else
+    echo ""
+    echo "✅ Fix verified - job completed successfully"
+    FIX_VERIFIED=true
+  fi
 
   echo ""
-  echo "📋 Act output saved to /tmp/act-debug.log"
-  echo "🔍 Review the output above for errors"
+  echo "📋 Full act output saved to /tmp/act-fix-test.log"
 else
   echo "⚠️  act not found. Install from: https://github.com/nektos/act"
-  echo "   Or use Option B below for manual testing"
+  echo "   Or use manual testing (see below)"
+  FIX_VERIFIED=false
 fi
 ```
 
-**Option B: Manual Local Testing**
+**Option B: Manual Local Testing (if act not available)**
 
 ```bash
 # Checkout the PR branch
@@ -637,35 +857,120 @@ npm test
 
 # Example for build:
 npm run build
+
+# Example for type-check:
+npm run type-check
 ```
 
-### Step 4: Implement the Fix
+**Verify Fix Before Committing**:
 
-1. **Review RCA document** - Understand root cause and recommended solution
-2. **Make necessary code changes** - Follow the RCA recommendations
-3. **Test fix locally**:
-   ```bash
-   # Run the specific check that failed
-   npm run lint          # If lint failed
-   npm run type-check   # If type-check failed
-   npm test             # If tests failed
-   npm run build        # If build failed
-   ```
+- [ ] Fix implemented according to RCA
+- [ ] Tested locally with `act` (if available) - job passes
+- [ ] Tested locally manually (if act not available) - check passes
+- [ ] No new errors introduced
+- [ ] Error from original failure is resolved
 
-### Step 5: Commit and Push Fix
+### Step 5: Update Agent Specs (If Knowledge Gap Found)
+
+**MANDATORY**: If investigation in Step 2 revealed missing, unclear, or incorrect documentation in agent specs, update them immediately.
+
+**Knowledge Gap Protocol**:
 
 ```bash
-# Stage changes
-git add <fixed-files>
+# 1. Identify which agent spec needs updating
+# Based on Step 2 findings, determine which expert's spec needs documentation
+
+# 2. Search for relevant agent spec file
+echo "🔍 Finding relevant agent spec..."
+find .cursor/rules -name "*.mdc" | xargs grep -l "relevant-keyword" | head -1
+
+# 3. Review current documentation
+echo "📋 Current documentation:"
+grep -A 10 -B 5 "relevant-keyword" .cursor/rules/*.mdc
+
+# 4. Add missing documentation
+# Edit the agent spec file to add:
+# - Clear explanation of the correct approach
+# - Examples of correct usage
+# - Common mistakes to avoid
+# - References to official documentation
+```
+
+**What to Add to Agent Specs**:
+
+- Clear explanation of the correct approach
+- Examples of correct usage
+- Common mistakes to avoid
+- References to official documentation
+- Validation steps or checks
+- Troubleshooting guidance
+
+**Example Update**:
+
+If the issue was about connection string format, add to Database Expert and DevOps Expert specs:
+
+````markdown
+## Connection String Format
+
+**CRITICAL**: Connection strings must be URL-encoded when passwords contain special characters.
+
+**Correct Format**:
+
+```bash
+DATABASE_URL="postgres://user:$(encodeURIComponent "$PASSWORD")@host:port/db"
+```
+````
+
+**Common Mistakes**:
+
+- ❌ Not encoding passwords with special characters
+- ❌ Missing required parameters
+- ❌ Using wrong protocol (postgres:// vs postgresql://)
+
+**Validation**:
+
+- Test connection string with actual database client
+- Verify encoding with: `node -e "console.log(encodeURIComponent('test@pass#123'))"`
+
+````
+
+**Commit Agent Spec Updates**:
+
+```bash
+# Stage agent spec updates
+git add .cursor/rules/*.mdc
 
 # Commit with proper message
-git commit -m "fix(scope): resolve [specific issue from CI failure]"
+git commit -m "docs(agents): add [topic] documentation to [expert] spec
+
+Addresses knowledge gap identified in PR #${PR_NUMBER}.
+Adds documentation for [specific topic] to prevent recurrence."
+````
+
+### Step 6: Commit and Push Fix
+
+```bash
+# Stage changes (fix files)
+git add <fixed-files>
+
+# If agent specs were updated, stage those too
+if git diff --cached --name-only | grep -q ".cursor/rules"; then
+  echo "✅ Agent spec updates included in commit"
+fi
+
+# Commit with proper message
+git commit -m "fix(scope): resolve [specific issue from CI failure]
+
+Implements fix from RCA in PR #${PR_NUMBER}.
+[Brief description of fix]
+
+Tested locally with act: [yes/no]"
 
 # Push to update PR
 git push origin $BRANCH_NAME
 ```
 
-### Step 6: Verify Fix
+### Step 7: Verify Fix
 
 ```bash
 # Wait for CI to run (or trigger manually)
@@ -787,16 +1092,22 @@ npm test -- --coverage --coverageReporters=text
 
 ## Debugging Checklist
 
-- [ ] Identified which check/job is failing
-- [ ] Viewed detailed error logs from GitHub Actions
-- [ ] Reproduced the issue locally
-- [ ] Identified root cause (not just symptoms)
-- [ ] Fixed the issue
-- [ ] Tested fix locally (all checks pass)
-- [ ] Committed fix with proper message
-- [ ] Pushed fix to PR branch
-- [ ] Verified CI passes after fix
-- [ ] Documented the issue and solution (if non-trivial)
+- [ ] **RCA Found**: Located and reviewed RCA document from `rca-pr` command
+- [ ] **Root Cause Understood**: Reviewed RCA findings and understand root cause
+- [ ] **Reproduced Locally**: Reproduced failure with `act` (if available) or manually
+- [ ] **Why Agent Built This**: Investigated why agent built this issue in
+  - [ ] Checked agent specs for missing/unclear/incorrect documentation
+  - [ ] Identified knowledge gap (if any)
+  - [ ] Documented findings
+- [ ] **Fix Implemented**: Implemented recommended solution from RCA
+- [ ] **Fix Tested Locally**: Tested fix with `act` (if available) or manually
+  - [ ] Fix verified - job/check passes locally
+  - [ ] No new errors introduced
+- [ ] **Agent Specs Updated**: Updated agent specs if knowledge gap found
+- [ ] **Fix Committed**: Committed fix with proper message (includes act test status)
+- [ ] **Fix Pushed**: Pushed fix to PR branch
+- [ ] **CI Verified**: Verified CI passes after fix
+- [ ] **Documentation Updated**: Updated agent specs or docs if needed
 
 ## Local Debugging with `act`
 
@@ -884,13 +1195,41 @@ grep -E "Error|Failed|❌|✅" /tmp/act-debug.log | head -20
 
 ## Best Practices
 
-- **Reproduce locally first**: Use `act` to test workflows locally before pushing
+### Fix Implementation
+
+- **Reproduce locally first**: Use `act` to reproduce failure before fixing
+- **Test fix locally**: Test fix with `act` before committing
 - **Read full error logs**: Don't just look at summary - read complete error messages
 - **Check recent changes**: Review what changed in the PR that might have caused the failure
 - **Test incrementally**: Fix one issue at a time, test with `act`, then move to next
-- **Document findings**: If the issue is complex, document it for future reference
 - **Use proper commit messages**: Follow Conventional Commits when fixing issues
 - **Verify before pushing**: Always test locally with `act` before pushing fixes
+
+### Learning from Issues
+
+- **Understand why agent built this**: Investigate why the agent made this mistake
+- **Check agent specs**: Always check if documentation was missing/unclear/incorrect
+- **Update agent specs immediately**: If knowledge gap found, add documentation right away
+- **Document patterns**: If this is a new pattern, document it in agent specs
+- **Prevent recurrence**: Add examples, common mistakes, and validation steps to agent specs
+
+### Act Usage
+
+- **Reproduce before fixing**: Use act to reproduce the failure first
+- **Test after fixing**: Use act to verify the fix works
+- **Start with failing job**: Run just the failing job first (faster)
+- **Use secrets file**: Create `.secrets` file (gitignored) for required secrets
+- **Save logs**: Use `tee` to save act output for review
+- **Compare with CI**: Compare act output with CI logs to validate reproduction
+
+### Agent Spec Updates
+
+- **Be specific**: Add clear, actionable documentation
+- **Include examples**: Show correct usage with examples
+- **List common mistakes**: Document what NOT to do
+- **Add validation**: Include steps to validate correct implementation
+- **Reference official docs**: Link to official documentation
+- **Update multiple specs**: If issue spans multiple experts, update all relevant specs
 
 ## Quick Reference
 
