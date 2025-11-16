@@ -22,6 +22,29 @@ Perform a comprehensive root cause analysis (RCA) of failures in the current ope
 
 **Keep RCA concise and precise** - Focus on root cause, recommended solution, and files requiring changes.
 
+## Optimized Command Flow
+
+The RCA process uses conditional logic to focus investigation and reduce execution time:
+
+1. **Get PR info and review previous RCAs** (always)
+2. **Extract error details** (always)
+3. **IF workflow failure**: Try act reproduction (optional - failing job first, then full workflow)
+4. **Causal Analysis (5 Whys)** (always - structured methodology)
+5. **Validate Root Cause** (always - combines documentation, CLI tools, construction analysis)
+6. **IF connection/auth error**: Check network/permissions (conditional)
+7. **Identify Failure Point** (always - simplified, focus on exact failure location)
+8. **IF root cause unclear**: Compare with working examples (optional)
+9. **Generate minimal RCA comment** (following industry best practices)
+10. **Post to PR**
+
+**Optimization Strategies**:
+
+- Skip unnecessary steps based on error type
+- Use conditional logic to focus investigation
+- Cache CLI tool results to avoid repeated calls
+- Parallelize independent checks where possible
+- Focus on validated findings, not assumptions
+
 ## Initial Setup
 
 ### 1. Get PR Information
@@ -171,11 +194,116 @@ gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failu
 - Error type (network, authentication, validation, etc.)
 - When error occurs (initialization, connection, query execution, etc.)
 
-### Step 2: Research Connection/Format Requirements
+### Step 1.5: Reproduce Locally with Act (Optional)
 
-**Goal**: Verify if the connection string format, API usage, or configuration matches requirements.
+**Goal**: Reproduce the exact failure locally using `act` to validate root cause. Try failing job first, then full workflow if needed.
 
-**MANDATORY**: Read documentation and validate with tools before making assumptions.
+**Prerequisites Check**:
+
+```bash
+# Check if act is installed
+if command -v act &> /dev/null; then
+  echo "✅ act is installed"
+  ACT_VERSION=$(act --version)
+  echo "   Version: $ACT_VERSION"
+  USE_ACT=true
+else
+  echo "⚠️  act is not installed - skipping local reproduction"
+  echo "   Install: https://github.com/nektos/act#installation"
+  USE_ACT=false
+fi
+```
+
+**Reproduce Failing Job First**:
+
+```bash
+if [ "$USE_ACT" = true ]; then
+  # Extract failing job name from workflow run
+  FAILING_JOB=$(gh run view $FAILED_RUN --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name' | head -1)
+
+  # Get workflow file name
+  WORKFLOW_FILE=$(gh run view $FAILED_RUN --json workflowName --jq '.workflowName' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+  WORKFLOW_PATH=".github/workflows/${WORKFLOW_FILE}.yml"
+
+  # Check if workflow file exists
+  if [ ! -f "$WORKFLOW_PATH" ]; then
+    WORKFLOW_PATH=$(find .github/workflows -name "*.yml" -o -name "*.yaml" | head -1)
+  fi
+
+  # Try failing job first (faster)
+  echo "🔬 Reproducing failing job '$FAILING_JOB' locally with act..."
+  act -j "$FAILING_JOB" -W "$WORKFLOW_PATH" --secret-file .env.local 2>&1 | tee /tmp/act-job.log
+
+  # Check if reproduction succeeded
+  if grep -qi "error\|failed\|fatal" /tmp/act-job.log; then
+    echo "✅ Reproduced error in failing job"
+    ACT_ERROR=$(grep -i "error\|failed\|fatal" /tmp/act-job.log | tail -3)
+    echo "$ACT_ERROR"
+    ACT_REPRODUCED=true
+  else
+    echo "⚠️  Failing job didn't reproduce - trying full workflow..."
+    # Try full workflow if job-specific reproduction didn't work
+    act -W "$WORKFLOW_PATH" --secret-file .env.local 2>&1 | tee /tmp/act-workflow.log
+    if grep -qi "error\|failed\|fatal" /tmp/act-workflow.log; then
+      echo "✅ Reproduced error in full workflow"
+      ACT_ERROR=$(grep -i "error\|failed\|fatal" /tmp/act-workflow.log | tail -3)
+      ACT_REPRODUCED=true
+    else
+      echo "⚠️  Could not reproduce locally - may be environment-specific"
+      ACT_REPRODUCED=false
+    fi
+  fi
+else
+  ACT_REPRODUCED=false
+fi
+```
+
+**Document**:
+
+- Whether error was reproduced locally (yes/no)
+- Exact error message from act (if reproduced)
+- Differences between local and CI environment (if not reproduced)
+- Validation: Error matches CI logs (yes/no)
+
+### Step 2: Causal Analysis (5 Whys)
+
+**Goal**: Use structured methodology to identify root cause, not just symptoms.
+
+**Process**:
+
+1. Start with the failure symptom
+2. Ask "Why did this happen?" 5 times
+3. Each answer becomes the next question
+4. Stop when you reach a fundamental cause (root cause)
+
+**Example**:
+
+```
+Why 1: Why did the workflow fail?
+  → Job "Deploy Preview" failed with connection error
+
+Why 2: Why did the connection error occur?
+  → Database connection string was invalid
+
+Why 3: Why was the connection string invalid?
+  → Password encoding was missing special characters
+
+Why 4: Why was password encoding missing?
+  → Script doesn't URL-encode passwords
+
+Why 5: Why doesn't the script encode passwords?
+  → Script assumes passwords don't contain special characters (ROOT CAUSE)
+```
+
+**Document**:
+
+- 5 Whys chain (all 5 questions and answers)
+- Root cause (the fundamental factor)
+- Contributing factors (not root causes, but relevant)
+
+### Step 3: Validate Root Cause
+
+**Goal**: Verify the root cause identified in Step 2 using documentation, CLI tools, and validation tests. This combines the previous Steps 2-3 (Connection/Format + Construction).
 
 **1. Check Codebase Documentation**:
 
@@ -231,31 +359,7 @@ gh secret list
 vercel env ls
 ```
 
-**3. Research Official Documentation**:
-
-- Search official documentation for correct formats
-- Compare with what's being used
-- Note any discrepancies
-
-**4. Update Agent Specs if Gap Found**:
-
-- If documentation is missing, add it immediately
-- Include examples, common mistakes, references
-- Continue investigation with updated knowledge
-
-**Document**:
-
-- Expected format/requirements (from official docs)
-- Actual format being used (from code/logs)
-- Differences identified (validated with tools)
-- Official documentation references
-- Any agent spec updates made
-
-### Step 3: Analyze Connection/Configuration Construction
-
-**Goal**: Understand how the connection string or configuration is built and validate each component.
-
-**1. Read Relevant Files**:
+**3. Analyze Construction Logic**:
 
 ```bash
 # View relevant script files
@@ -267,52 +371,46 @@ cat scripts/create-schema.js
 
 # Check how connection strings are constructed
 grep -r "DATABASE_URL\|connection.*string" scripts/ --include="*.sh" --include="*.js" -A 5 -B 5
-```
 
-**2. Trace Variable Flow**:
-
-```bash
 # Trace environment variables through the execution
-# Check workflow file for env var passing
 gh pr diff .github/workflows/review-apps.yml | grep -A 10 -B 10 "env:\|DATABASE_URL"
 
-# Check script for variable usage
-grep -n "DATABASE_URL\|ENCODED_PASSWORD\|DB_HOST" scripts/create-supabase-preview.sh
-```
-
-**3. Validate Construction Logic**:
-
-```bash
 # Test password encoding (if applicable)
 node -e "console.log(encodeURIComponent('test@password#123'))"
 
 # Test host extraction (if applicable)
-# Extract from API response and verify format
 curl -H "Authorization: Bearer $TOKEN" "$API_URL" | jq '.database.host'
-
-# Verify each component is constructed correctly
-# Compare with expected format from Step 2
 ```
 
-**4. Test Construction Output**:
+**4. Research Official Documentation**:
 
-```bash
-# If possible, run script in dry-run mode or extract constructed value
-# Compare constructed value with expected format
-# Validate against official documentation
-```
+- Search official documentation for correct formats
+- Compare with what's being used
+- Note any discrepancies
+
+**5. Update Agent Specs if Gap Found**:
+
+- If documentation is missing, add it immediately
+- Include examples, common mistakes, references
+- Continue investigation with updated knowledge
 
 **Document**:
 
+- Expected format/requirements (from official docs)
+- Actual format being used (from code/logs)
 - How the connection string/config is constructed (line by line)
 - Source of each component (env vars, API responses, etc.)
 - Any transformations applied (encoding, concatenation, etc.)
 - Validation results (what was tested, what passed/failed)
-- Potential issues in construction logic (validated, not assumed)
+- Differences identified (validated with tools)
+- Official documentation references
+- Any agent spec updates made
 
-### Step 4: Check Network Access and Permissions
+### Step 4: Check Network Access and Permissions (Conditional)
 
-**Goal**: Determine if network access, firewall rules, or permissions are blocking the operation. **Validate with tools, don't assume**.
+**Goal**: Determine if network access, firewall rules, or permissions are blocking the operation. **ONLY run this step if connection/auth issues are identified**. **Validate with tools, don't assume**.
+
+**When to Run**: Only if Step 3 indicates connection or authentication issues.
 
 **1. Validate Network Access**:
 
@@ -374,9 +472,9 @@ gh api /repos/:owner/:repo
 - Test results (what was tested, what passed/failed)
 - Blocking factors identified (validated, not assumed)
 
-### Step 5: Review Script Execution Flow
+### Step 5: Identify Failure Point (Simplified)
 
-**Goal**: Understand the complete execution flow and identify where failures occur.
+**Goal**: Understand the exact failure point in the execution flow. Focus only on where the failure occurs.
 
 ```bash
 # View workflow file
@@ -388,15 +486,16 @@ grep -r "export\|require\|import" scripts/ --include="*.sh" --include="*.js"
 
 **Document**:
 
-- Complete execution flow (step by step)
-- Environment variable passing
-- Script dependencies
-- Timing of operations
-- Failure point in the flow
+- Exact failure point (file, line, function)
+- Environment variable passing at failure point
+- Script dependencies at failure point
+- Timing of failure (when in execution flow)
 
-### Step 6: Compare with Working Examples
+### Step 6: Compare with Working Examples (Optional)
 
-**Goal**: Compare the failing implementation with known working examples. **Validate differences with tools**.
+**Goal**: Compare the failing implementation with known working examples. **ONLY run this step if root cause is still unclear after Steps 1-5**. **Validate differences with tools**.
+
+**When to Run**: Only if root cause is not clear after completing Steps 1-5.
 
 **1. Find Working Examples**:
 
@@ -442,74 +541,50 @@ grep -h "postgres://\|postgresql://" scripts/*.sh scripts/*.js docs/*.md
 
 ## RCA Comment Structure
 
-Create a concise RCA comment with the following structure (keep it short and precise, but include validation evidence):
+Create a minimal RCA comment following industry best practices (Problem → Root Cause → Corrective → Preventive). Keep it under 300 words total.
 
 ```markdown
 ## 🔍 Root Cause Analysis
 
-### Problem Summary
+### Problem Statement
 
-[Brief description of the failure - 1-2 sentences]
-
-### Previous Attempts
-
-[If previous RCA comments exist, include this section:]
-
-**Previous RCA Comments Found**: [Number] previous investigation(s)
-
-**What Was Tried Before**:
-
-- [Previous attempt 1]: [Solution that was attempted] - **Why it didn't work**: [Reason or "Still investigating"]
-- [Previous attempt 2]: [Solution that was attempted] - **Why it didn't work**: [Reason or "Still investigating"]
-
-**Why This Investigation Is Different**:
-
-- [New information discovered]
-- [Different approach based on previous findings]
-- [What changed since last attempt]
-
-[If no previous RCA comments exist, omit this section]
+[1 sentence: What failed, when, where, impact]
 
 ### Root Cause
 
-**PRIMARY**: [Clear statement of the root cause - 1-2 sentences]
+**PRIMARY**: [1-2 sentences: Fundamental root cause identified via 5 Whys]
 
-**Evidence** (validated with tools/docs):
+**Validation**:
 
-- [Key evidence point 1 - what was tested/validated]
-- [Key evidence point 2 - what was tested/validated]
-- [Reference to official documentation or agent spec]
+- ✅ Reproduced locally: [Yes/No - act result]
+- ✅ Validated: [CLI tool result or doc reference]
 
-**Why Previous Solutions Didn't Work** (if applicable):
+### Corrective Action
 
-- [Previous solution 1]: [Why it failed - specific reason]
-- [Previous solution 2]: [Why it failed - specific reason]
+[2-3 sentences: Specific fix with file:line numbers]
 
-### Recommended Solution
+### Preventive Measure
 
-[Solution description with implementation steps - be specific]
-[Include exact format/configuration needed]
-
-**Why This Solution Will Work** (if previous attempts exist):
-
-- [How this differs from previous attempts]
-- [What new information supports this approach]
-- [Why previous solutions failed and this won't]
+[1 sentence: How to prevent recurrence]
 
 ### Files Requiring Changes
 
-- `path/to/file1` - [reason - what needs to change and why]
-- `path/to/file2` - [reason - what needs to change and why]
-
-### Documentation Updates
-
-[If agent specs were updated, note what was added and where]
+- `path/to/file:line` - [1 sentence: what to change]
 
 ### Next Steps
 
-1. [Action item 1]
-2. [Action item 2]
+1. [Action item]
+2. [Action item]
 ```
+
+**Key Principles**:
+
+- Follows industry structure (Problem → Root Cause → Corrective → Preventive)
+- Minimal format (2-3 sentences per section)
+- Includes validation evidence (act reproduction OR CLI tools OR docs)
+- Removes verbose sections
+- Focuses on actionable items
+- Total word count: < 300 words
 
 ## Agent-Specific Investigation Focus
 
@@ -553,17 +628,20 @@ Create a concise RCA comment with the following structure (keep it short and pre
 ## Investigation Best Practices
 
 1. **Review Previous RCA Comments First**: Always check for previous RCA comments in the PR before starting investigation. This prevents repeating failed solutions and helps build on previous findings.
-2. **Validate Assumptions with Tooling**: Use CLI tools to test assumptions, don't just read code
-3. **Read Documentation First**: Check `docs/` directory and agent specs for relevant information
-4. **Update Agent Specs Immediately**: If knowledge gaps are found, add documentation to agent specs right away
-5. **Be Systematic**: Follow the investigation steps in order
-6. **Verify with CLI Tools**: Test connection strings, API calls, configurations using actual tools
-7. **Compare with Working Examples**: Always compare with known working code
-8. **Research Official Documentation**: Check official documentation for requirements
-9. **Identify Root Cause**: Don't just identify symptoms - find the root cause
-10. **Avoid Repeating Failed Solutions**: If a solution was already tried in a previous RCA, don't recommend it again unless you have new information that suggests it should work
-11. **Explain Why Previous Attempts Failed**: If previous RCA comments exist, investigate why those solutions didn't work and address those issues in your new analysis
-12. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
+2. **Use 5 Whys Methodology**: Use structured causal analysis (5 Whys) to identify root cause, not just symptoms. Stop when you reach a fundamental cause.
+3. **Reproduce Locally with Act** (if available): Try to reproduce the failure locally using `act` to validate root cause. Start with failing job, then full workflow if needed.
+4. **Validate Assumptions with Tooling**: Use CLI tools to test assumptions, don't just read code
+5. **Read Documentation First**: Check `docs/` directory and agent specs for relevant information
+6. **Update Agent Specs Immediately**: If knowledge gaps are found, add documentation to agent specs right away
+7. **Be Systematic**: Follow the investigation steps in order, but skip conditional steps if not applicable
+8. **Verify with CLI Tools**: Test connection strings, API calls, configurations using actual tools
+9. **Compare with Working Examples**: Only if root cause is unclear after Steps 1-5
+10. **Research Official Documentation**: Check official documentation for requirements
+11. **Identify Root Cause**: Don't just identify symptoms - find the fundamental root cause using 5 Whys
+12. **Avoid Repeating Failed Solutions**: If a solution was already tried in a previous RCA, don't recommend it again unless you have new information that suggests it should work
+13. **Explain Why Previous Attempts Failed**: If previous RCA comments exist, investigate why those solutions didn't work and address those issues in your new analysis
+14. **No Fixes Yet**: This command is investigation only - document findings for the `debug-pr` command
+15. **Keep Reports Minimal**: Follow industry best practices format, keep under 300 words total
 
 ## Validation and Testing
 
@@ -638,6 +716,47 @@ gh run view $RUN_ID --log
 act -l  # List workflows
 ```
 
+## Act Setup (Optional but Recommended)
+
+To enable local reproduction with `act`:
+
+**1. Install act**:
+
+```bash
+# macOS
+brew install act
+
+# Linux (using install script)
+curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+
+# Or download from: https://github.com/nektos/act/releases
+```
+
+**2. Configure secrets** (if needed):
+
+```bash
+# Create .env.local with required secrets (gitignored)
+# Format: SECRET_NAME=value
+# Example:
+# DATABASE_URL=postgres://...
+# SUPABASE_ACCESS_TOKEN=...
+```
+
+**3. Test act**:
+
+```bash
+# List workflows
+act -l
+
+# Run specific job
+act -j "Job Name" -W .github/workflows/ci.yml
+
+# Run with secrets file
+act -j "Job Name" -W .github/workflows/ci.yml --secret-file .env.local
+```
+
+**Note**: Act may not perfectly replicate GitHub Actions environment, but it helps validate most issues. If act is not installed, the RCA process will continue with log-based investigation.
+
 ## Knowledge Gap Protocol
 
 **MANDATORY**: If you identify a knowledge gap during investigation:
@@ -666,102 +785,63 @@ act -l  # List workflows
 - Add connection string documentation to Database Expert spec
 - Continue investigation with new knowledge
 
+## Validation Checklist (MANDATORY Before Posting)
+
+**CRITICAL**: Before posting RCA, verify all items below. All findings must be evidence-based, not assumptions.
+
+- [ ] Problem statement is clear (what, when, where, impact)
+- [ ] 5 Whys analysis completed (root cause identified, not symptom)
+- [ ] Root cause validated (act reproduction OR CLI tools OR docs)
+- [ ] Corrective action is specific (file:line, exact change)
+- [ ] Preventive measure identified (how to prevent recurrence)
+- [ ] No assumptions - all findings are evidence-based
+- [ ] Report is minimal (< 300 words total)
+
+**If any item is unchecked, complete the investigation before posting.**
+
 ## Posting RCA Findings
 
-**MANDATORY**: After completing the investigation, post findings directly to the PR as a comment. Do NOT create local files.
+**MANDATORY**: After completing the investigation and validation checklist, post findings directly to the PR as a comment. Do NOT create local files.
 
 ### Post as PR Comment (Default and Required)
 
 ```bash
-# Post concise RCA directly to PR
-# Include previous attempts section if previous RCA comments exist
+# Post minimal RCA directly to PR (following industry best practices format)
+# Format: Problem → Root Cause → Corrective → Preventive
 
-# Check if previous RCA comments exist
-PREVIOUS_RCA_COUNT=$(gh pr view $PR_NUMBER --json comments --jq '.comments[] | select(.body | contains("🔍 Root Cause Analysis") or contains("Root Cause Analysis")) | .id' | wc -l | tr -d ' ')
+gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
 
-if [ "$PREVIOUS_RCA_COUNT" -gt 0 ]; then
-  # Build previous attempts section from /tmp/previous_rca_attempts.md
-  PREVIOUS_ATTEMPTS_SECTION=$(cat /tmp/previous_rca_attempts.md 2>/dev/null || echo "")
-
-  gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
-
-### Problem Summary
-[Brief description - 1-2 sentences]
-
-### Previous Attempts
-
-**Previous RCA Comments Found**: ${PREVIOUS_RCA_COUNT} previous investigation(s)
-
-**What Was Tried Before**:
-${PREVIOUS_ATTEMPTS_SECTION}
-
-**Why This Investigation Is Different**:
-- [New information discovered]
-- [Different approach based on previous findings]
-- [What changed since last attempt]
+### Problem Statement
+[1 sentence: What failed, when, where, impact]
 
 ### Root Cause
-**PRIMARY**: [Clear statement - 1-2 sentences]
+**PRIMARY**: [1-2 sentences: Fundamental root cause identified via 5 Whys]
 
-**Evidence** (validated):
-- [Key evidence point 1 - what was tested/validated]
-- [Key evidence point 2 - what was tested/validated]
-- [Reference to official docs or agent spec]
+**Validation**:
+- ✅ Reproduced locally: [Yes/No - act result]
+- ✅ Validated: [CLI tool result or doc reference]
 
-**Why Previous Solutions Didn't Work**:
-- [Previous solution 1]: [Why it failed - specific reason]
-- [Previous solution 2]: [Why it failed - specific reason]
+### Corrective Action
+[2-3 sentences: Specific fix with file:line numbers]
 
-### Recommended Solution
-[Solution with specific implementation steps and exact formats]
-
-**Why This Solution Will Work**:
-- [How this differs from previous attempts]
-- [What new information supports this approach]
-- [Why previous solutions failed and this won't]
+### Preventive Measure
+[1 sentence: How to prevent recurrence]
 
 ### Files Requiring Changes
-- \`path/to/file1\` - [reason - what needs to change]
-- \`path/to/file2\` - [reason - what needs to change]
-
-### Documentation Updates
-[If agent specs were updated: Added [topic] to [agent spec] - see [section]]
+- \`path/to/file:line\` - [1 sentence: what to change]
 
 ### Next Steps
-1. [Action item 1]
-2. [Action item 2]"
-else
-  # No previous RCA comments - use standard format
-  gh pr comment $PR_NUMBER --body "## 🔍 Root Cause Analysis
-
-### Problem Summary
-[Brief description - 1-2 sentences]
-
-### Root Cause
-**PRIMARY**: [Clear statement - 1-2 sentences]
-
-**Evidence** (validated):
-- [Key evidence point 1 - what was tested/validated]
-- [Key evidence point 2 - what was tested/validated]
-- [Reference to official docs or agent spec]
-
-### Recommended Solution
-[Solution with specific implementation steps and exact formats]
-
-### Files Requiring Changes
-- \`path/to/file1\` - [reason - what needs to change]
-- \`path/to/file2\` - [reason - what needs to change]
-
-### Documentation Updates
-[If agent specs were updated: Added [topic] to [agent spec] - see [section]]
-
-### Next Steps
-1. [Action item 1]
-2. [Action item 2]"
-fi
+1. [Action item]
+2. [Action item]"
 ```
 
-**Keep it concise but precise** - Focus on root cause (validated), solution (with exact formats), and actionable next steps. Include validation evidence, not assumptions. **Always reference previous attempts** if they exist to avoid repeating failed solutions.
+**Key Requirements**:
+
+- Keep total word count under 300 words
+- Follow industry structure (Problem → Root Cause → Corrective → Preventive)
+- Include validation evidence (act reproduction OR CLI tools OR docs)
+- Use specific file:line references
+- Focus on actionable items
 
 ### Create GitHub Issue (Rare - Only for System-Wide Issues)
 

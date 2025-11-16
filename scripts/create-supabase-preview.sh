@@ -156,16 +156,24 @@ if command -v jq >/dev/null 2>&1; then
   PROJECT_ID=$(echo "$PROJECT_DETAILS" | jq -r '.id // .project_id // "unknown"' 2>/dev/null || echo "unknown")
   
   # Extract project reference ID from API response (required for hostname construction)
-  # Supabase API returns 'ref' field containing the project reference ID (short alphanumeric string)
-  # This is different from project ID (UUID) and is required for database hostname construction
-  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // ""' 2>/dev/null || echo "")
+  # Supabase API may return 'ref' field, but if fetching by project ref, it might not be in response
+  # In that case, we use SUPABASE_PROJECT_REF (which we used to fetch the project)
+  # Try multiple possible field names for project reference
+  PROJECT_REF_ID=$(echo "$PROJECT_DETAILS" | jq -r '.ref // .reference_id // .project_ref // .id // ""' 2>/dev/null || echo "")
   
-  # Fallback to SUPABASE_PROJECT_REF if not found in API response
+  # If PROJECT_REF_ID is empty or null, use SUPABASE_PROJECT_REF (which should be the project reference)
+  # This is the most reliable source since we used it to fetch the project
   if [ -z "$PROJECT_REF_ID" ] || [ "$PROJECT_REF_ID" = "null" ] || [ "$PROJECT_REF_ID" = "" ]; then
-    echo "⚠️  Warning: Project reference ID not found in API response, using SUPABASE_PROJECT_REF"
+    echo "ℹ️  Project reference ID not found in API response, using SUPABASE_PROJECT_REF"
+    echo "   This is normal - when fetching by project ref, the API may not return it again"
     PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
   else
-    echo "✅ Extracted project reference ID from API response"
+    echo "✅ Extracted project reference ID from API response: $PROJECT_REF_ID"
+    # Validate that extracted ref matches SUPABASE_PROJECT_REF (they should be the same)
+    if [ "$PROJECT_REF_ID" != "$SUPABASE_PROJECT_REF" ]; then
+      echo "⚠️  Warning: Extracted ref ($PROJECT_REF_ID) doesn't match SUPABASE_PROJECT_REF ($SUPABASE_PROJECT_REF)"
+      echo "   Using extracted ref from API response"
+    fi
   fi
   
   # Log project information (without exposing secrets)
@@ -214,11 +222,57 @@ else
   PROJECT_REF_ID="$SUPABASE_PROJECT_REF"
 fi
 
+# CRITICAL: Validate PROJECT_REF_ID is not empty before constructing hostname
+# Empty PROJECT_REF_ID would result in invalid hostname like "db..supabase.co"
+if [ -z "$PROJECT_REF_ID" ] || [ "$PROJECT_REF_ID" = "null" ] || [ "$PROJECT_REF_ID" = "" ]; then
+  echo ""
+  echo "❌ Error: Project reference ID is empty or invalid"
+  echo "   PROJECT_REF_ID: '$PROJECT_REF_ID'"
+  echo "   SUPABASE_PROJECT_REF: '$SUPABASE_PROJECT_REF'"
+  echo ""
+  echo "💡 This indicates:"
+  echo "   1. SUPABASE_PROJECT_REF secret is not set or is empty"
+  echo "   2. API response doesn't contain 'ref' field"
+  echo "   3. Project reference ID extraction failed"
+  echo ""
+  echo "🔧 Troubleshooting:"
+  echo "   1. Verify SUPABASE_PROJECT_REF in GitHub secrets"
+  echo "   2. Check project reference in Supabase Dashboard → Project Settings → General"
+  echo "   3. Ensure the project reference is a short alphanumeric string (e.g., 'abcdefghijklmnop')"
+  echo "   4. Check API response structure - it should contain 'ref' field"
+  echo ""
+  echo "📋 Debug: API response structure (first 50 lines):"
+  echo "$PROJECT_DETAILS" | jq '.' 2>/dev/null | head -50 || echo "$PROJECT_DETAILS" | head -50
+  exit 1
+fi
+
+# Validate PROJECT_REF_ID format (should be alphanumeric, possibly with hyphens)
+# Supabase project refs are typically 20-character alphanumeric strings
+if ! echo "$PROJECT_REF_ID" | grep -qE '^[a-z0-9-]{10,}$'; then
+  echo "⚠️  Warning: Project reference ID format may be incorrect"
+  echo "   PROJECT_REF_ID: '$PROJECT_REF_ID'"
+  echo "   Expected: Alphanumeric string (10+ characters)"
+  echo "   This might still work, but please verify the format"
+fi
+
 # Construct DB_HOST from project reference ID (extracted from API or fallback to SUPABASE_PROJECT_REF)
 # Supabase Transaction Mode hosts are ALWAYS: db.[PROJECT-REF].supabase.co
 # The project reference ID is a short alphanumeric string (not the UUID project ID)
 # This must be extracted from the API response to ensure correct hostname format
 DB_HOST="db.${PROJECT_REF_ID}.supabase.co"
+
+# Validate hostname format before proceeding
+if ! echo "$DB_HOST" | grep -qE '^db\.[a-z0-9-]+\.supabase\.co$'; then
+  echo ""
+  echo "❌ Error: Invalid hostname format constructed"
+  echo "   DB_HOST: '$DB_HOST'"
+  echo "   PROJECT_REF_ID: '$PROJECT_REF_ID'"
+  echo "   Expected format: db.[PROJECT-REF].supabase.co"
+  echo ""
+  echo "💡 This suggests PROJECT_REF_ID contains invalid characters"
+  exit 1
+fi
+
 echo "✅ Using database host: $DB_HOST (constructed from project reference ID)"
 
 # Extract DB_NAME from API response (optional, defaults to postgres)
