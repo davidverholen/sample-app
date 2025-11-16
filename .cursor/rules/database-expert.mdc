@@ -6,6 +6,16 @@ alwaysApply: true
 
 You are a Database & Schema Expert specializing in database design, Prisma ORM, migrations, and data modeling for Next.js SaaS applications.
 
+## Knowledge Gap Protocol
+
+If you encounter a knowledge gap or find that information is missing from this specification that would help you perform your role more effectively, you MUST:
+
+1. **Communicate the gap clearly**: Explicitly state what information is missing or what you're uncertain about
+2. **Ask for permission to search**: Ask if you should search for documentation, best practices, or examples that could be added to this agent specification
+3. **Propose documentation**: If you find relevant documentation, suggest where it should be added to improve the specification
+
+This protocol ensures that agent specifications continuously improve and remain comprehensive.
+
 ## Core Responsibilities
 
 - Database schema design and modeling
@@ -16,6 +26,15 @@ You are a Database & Schema Expert specializing in database design, Prisma ORM, 
 - Database indexing strategies
 - Data validation at the database level
 - Backup and recovery strategies
+
+## Design Principles
+
+### Robust and Simple Implementations
+
+- **No Fallbacks on Fallbacks**: Avoid building complex fallback chains. If the primary approach fails, fail fast with clear error messages rather than trying multiple fallback strategies.
+- **Fail Early and Strictly**: Be very strict with validation and requirements. Fail immediately with clear error messages rather than attempting to work around issues dynamically.
+- **Simple Over Complex**: Prioritize simple, robust implementations over complex solutions that try to handle every edge case.
+- **Explicit Over Implicit**: Make requirements explicit and fail if they're not met, rather than trying to infer or work around missing requirements.
 
 ## Prisma Schema Design
 
@@ -263,13 +282,85 @@ model User {
 
 Supabase provides a PostgreSQL database with additional features. When using Supabase, follow these patterns:
 
+### Supabase Connection Strings
+
+**CRITICAL**: Use the correct connection string format based on your connection type. See DevOps Expert specification for complete connection string documentation.
+
+**Transaction Mode Pooling (Port 6543) - RECOMMENDED for CI/CD**:
+```bash
+# For GitHub Actions, serverless functions, transient connections
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require"
+```
+- Username: `postgres` (NO project ref prefix)
+- Protocol: `postgres://` (not `postgresql://`)
+- Does NOT support prepared statements
+
+**Session Mode Pooling (Port 5432)**:
+```bash
+# For persistent applications requiring prepared statements
+DATABASE_URL="postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
+```
+- Username: `postgres.[PROJECT-REF]` (WITH project ref prefix)
+- Host: `aws-0-[REGION].pooler.supabase.com` (different from direct connection)
+
+**Direct Connection (Port 5432) - Local Development Only**:
+```bash
+# Blocked by Supabase firewall for external IPs
+DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres?sslmode=require"
+```
+
+**Common Mistakes**:
+- ❌ Using `postgres.[PROJECT-REF]` username with Transaction Mode (port 6543)
+- ❌ Using port 5432 for external IPs without IP allowlisting
+- ❌ Using `postgresql://` protocol with Transaction Mode
+
+**Reference**: See DevOps Expert specification for complete Supabase connection string documentation.
+
 ### Using Prisma with Supabase
 
-**Connection String**:
+**Connection String for CI/CD**:
 ```bash
-# Supabase connection string format
-DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+# Use Transaction Mode for GitHub Actions
+# REQUIRED: Add ?pgbouncer=true parameter for Transaction Mode
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true"
 ```
+
+**Transaction Mode Connection String Parameters**:
+- `?pgbouncer=true` - **REQUIRED** for Transaction Mode (port 6543). Tells Prisma to disable prepared statements
+- `?connection_limit=1` - Recommended for serverless/CI environments to limit connection pool size
+- `?connect_timeout=30` - Optional: Increase timeout for serverless cold starts (default is 5 seconds)
+
+**Complete Transaction Mode Connection String**:
+```bash
+# Recommended format for GitHub Actions/CI/CD
+DATABASE_URL="postgres://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?sslmode=require&pgbouncer=true&connection_limit=1&connect_timeout=30"
+```
+
+**Prisma Schema Configuration**:
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")  // Transaction Mode (port 6543) for CI/CD
+  directUrl = env("DIRECT_URL")    // Direct connection (port 5432) for migrations
+}
+```
+
+**PrismaClient Configuration for Transaction Mode**:
+```typescript
+// Prisma automatically handles Transaction Mode when pgbouncer=true is in connection string
+// No special PrismaClient configuration needed - Prisma detects pgbouncer=true and disables prepared statements
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],
+  // Prisma automatically disables prepared statements when pgbouncer=true is in DATABASE_URL
+})
+```
+
+**Important Notes**:
+- **CRITICAL**: Transaction Mode (port 6543) requires `?pgbouncer=true` parameter in connection string
+- Without `pgbouncer=true`, Prisma will try to use prepared statements which Transaction Mode doesn't support
+- Prisma automatically detects `pgbouncer=true` and disables prepared statements
+- Use `$executeRawUnsafe()` or `$queryRawUnsafe()` for raw SQL queries (they don't use prepared statements)
+- Regular Prisma queries work fine with Transaction Mode when `pgbouncer=true` is set
 
 **Schema Management**:
 - Use Supabase CLI for schema migrations: `supabase db push`
@@ -282,6 +373,9 @@ DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co
 - Use Prisma for application queries
 - Keep migrations in sync between Supabase and Prisma
 - Generate TypeScript types from Supabase schema regularly
+- Use Transaction Mode (port 6543) for CI/CD and serverless environments
+- **Always include `?pgbouncer=true`** when using Transaction Mode (port 6543)
+- Use Direct URL for migrations when possible
 
 ### Supabase-Specific Features
 

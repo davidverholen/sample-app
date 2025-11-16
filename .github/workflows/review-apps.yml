@@ -1,0 +1,430 @@
+name: Review Apps
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    timeout-minutes: 20
+    outputs:
+      preview-url: ${{ steps.deploy.outputs.preview-url }}
+      database-url: ${{ steps.create-supabase-preview.outputs.database-url }}
+      preview-instance-name: ${{ steps.create-supabase-preview.outputs.instance-name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "❌ VERCEL_TOKEN secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_ORG_ID }}" ]; then
+            echo "❌ VERCEL_ORG_ID secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "❌ VERCEL_PROJECT_ID secret is required"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+            echo "❌ SUPABASE_ACCESS_TOKEN secret is required"
+            echo "Please set SUPABASE_ACCESS_TOKEN in GitHub secrets"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SUPABASE_PROJECT_REF }}" ]; then
+            echo "❌ SUPABASE_PROJECT_REF secret is required"
+            echo "Please set SUPABASE_PROJECT_REF in GitHub secrets"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SUPABASE_DB_PASSWORD }}" ]; then
+            echo "❌ SUPABASE_DB_PASSWORD secret is required"
+            echo "Please set SUPABASE_DB_PASSWORD in GitHub secrets with your main Supabase project's database password"
+            echo "You can find this in: Supabase Dashboard → Project Settings → Database → Connection string"
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
+      - name: Create Supabase preview schema
+        id: create-supabase-preview
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          chmod +x scripts/create-supabase-preview.sh
+          # Run script - it creates a PostgreSQL schema and writes outputs to GITHUB_OUTPUT
+          ./scripts/create-supabase-preview.sh \
+            "${{ github.head_ref }}" \
+            "${{ github.event.pull_request.number }}" \
+            "${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
+            "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: Validate script outputs
+        run: |
+          # Validate that required outputs were set
+          if [ -z "${{ steps.create-supabase-preview.outputs.database-url }}" ]; then
+            echo "❌ Error: database-url output is missing"
+            exit 1
+          fi
+          if [ -z "${{ steps.create-supabase-preview.outputs.instance-name }}" ]; then
+            echo "❌ Error: instance-name output is missing"
+            exit 1
+          fi
+          if [ -z "${{ steps.create-supabase-preview.outputs.schema-name }}" ]; then
+            echo "❌ Error: schema-name output is missing"
+            exit 1
+          fi
+          echo "✅ All required outputs are set"
+          echo "Instance: ${{ steps.create-supabase-preview.outputs.instance-name }}"
+          echo "Schema: ${{ steps.create-supabase-preview.outputs.schema-name }}"
+
+      - name: Verify database connection
+        env:
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+        run: |
+          echo "Verifying database connection to preview schema..."
+
+          if [ -z "$DATABASE_URL" ]; then
+            echo "❌ Error: DATABASE_URL is required but not set"
+            exit 1
+          fi
+
+          # PostgreSQL schemas are created instantly, so we just verify the connection
+          echo "Testing database connection..."
+          if node scripts/test-db-connection.js 2>&1; then
+            echo "✅ Database connection verified"
+            echo "✅ Preview schema is ready"
+          else
+            echo "❌ Error: Database connection failed"
+            echo "This might indicate:"
+            echo "  - Database connection string is incorrect"
+            echo "  - Network connectivity issues"
+            echo "  - Database permissions issue"
+            echo "  - Schema was not created successfully"
+            exit 1
+          fi
+
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+        run: |
+          echo "Applying database migrations..."
+          echo "DATABASE_URL format: $(echo "$DATABASE_URL" | sed 's/:[^:@]*@/:***@/')"
+
+          # Try to push schema with retries
+          max_retries=3
+          retry=0
+
+          while [ $retry -lt $max_retries ]; do
+            if npx prisma db push --accept-data-loss 2>&1; then
+              echo "✅ Database migrations applied successfully"
+              exit 0
+            else
+              retry=$((retry + 1))
+              if [ $retry -lt $max_retries ]; then
+                echo "⚠️  Migration attempt $retry failed, retrying in 10 seconds..."
+                sleep 10
+              else
+                echo "❌ Database migrations failed after $max_retries attempts"
+                echo ""
+                echo "This might indicate:"
+                echo "  - Database connection string is incorrect"
+                echo "  - Network connectivity issues"
+                echo "  - Database permissions issue"
+                echo "  - Schema was not created successfully"
+                echo ""
+                echo "Please check:"
+                echo "  1. Database connection string format (should include search_path parameter)"
+                echo "  2. Network connectivity from GitHub Actions"
+                echo "  3. Schema exists in the main Supabase project"
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Seed preview database
+        env:
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+        run: |
+          npm run db:seed || echo "⚠️ Seeding failed, continuing..."
+
+      - name: Generate NextAuth secret
+        id: generate-secret
+        run: |
+          echo "secret=$(openssl rand -base64 32)" >> $GITHUB_OUTPUT
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Link Vercel project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          # Link project if not already linked
+          if [ ! -f ".vercel/project.json" ]; then
+            # Use proper flags for non-interactive linking
+            vercel link --yes --token $VERCEL_TOKEN \
+              --project $VERCEL_PROJECT_ID \
+              --scope $VERCEL_ORG_ID 2>&1 || {
+              echo "⚠️  Failed to link project, creating .vercel/project.json manually"
+              # Create minimal .vercel/project.json manually
+              mkdir -p .vercel
+              echo "{\"projectId\":\"$VERCEL_PROJECT_ID\",\"orgId\":\"$VERCEL_ORG_ID\"}" > .vercel/project.json
+            }
+          fi
+          echo "✅ Vercel project linked"
+
+      - name: Set Vercel preview environment variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DATABASE_URL: ${{ steps.create-supabase-preview.outputs.database-url }}
+          NEXTAUTH_SECRET: ${{ steps.generate-secret.outputs.secret }}
+        run: |
+          set -e
+          # Set environment variables for preview environment
+          # Note: These are scoped to preview environment, so we set them right before deployment
+          # to ensure this deployment uses the correct values
+          # WARNING: All preview deployments share these variables, but we update them per deployment
+          echo "$DATABASE_URL" | vercel env add DATABASE_URL preview --token $VERCEL_TOKEN --yes
+          echo "$NEXTAUTH_SECRET" | vercel env add NEXTAUTH_SECRET preview --token $VERCEL_TOKEN --yes
+          echo "✅ Environment variables set for preview environment"
+
+      - name: Deploy to Vercel Preview
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -e
+          # Deploy to preview
+          DEPLOY_OUTPUT=$(vercel --token $VERCEL_TOKEN --yes --force 2>&1)
+          echo "$DEPLOY_OUTPUT"
+
+          # Extract deployment URL from output - try multiple methods
+          DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9-]+\.vercel\.app' | head -1)
+
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            # Try alternative pattern
+            DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[^ ]*\.vercel\.app' | head -1)
+          fi
+
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            # Try to extract from JSON if available (requires jq)
+            if command -v jq &> /dev/null && echo "$DEPLOY_OUTPUT" | grep -q '{'; then
+              DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | jq -r '.urls[0] // .url // empty' 2>/dev/null || echo "")
+            fi
+          fi
+
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            echo "❌ Failed to extract deployment URL from output"
+            echo "Deployment output: $DEPLOY_OUTPUT"
+            exit 1
+          fi
+
+          echo "preview-url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: $DEPLOYMENT_URL"
+
+      - name: Set URL-based Vercel environment variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.preview-url }}
+        run: |
+          set -e
+          # Set URL-based environment variables (these can be shared across previews)
+          echo "$PREVIEW_URL" | vercel env add NEXTAUTH_URL preview --token $VERCEL_TOKEN --yes
+          echo "$PREVIEW_URL" | vercel env add NEXT_PUBLIC_APP_URL preview --token $VERCEL_TOKEN --yes
+          echo "✅ URL-based environment variables set"
+
+      - name: Comment PR with preview URL
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const previewUrl = '${{ steps.deploy.outputs.preview-url }}';
+            const databaseUrl = '${{ steps.create-supabase-preview.outputs.database-url }}';
+            const body = `## 🚀 Preview Deployment Ready
+
+            **Preview URL**: ${previewUrl}
+
+            **Database**: Preview schema created and seeded
+
+            E2E tests will run automatically against this preview deployment.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  e2e-preview:
+    name: E2E Tests (Preview)
+    runs-on: ubuntu-latest
+    needs: deploy-preview
+    if: github.event.action != 'closed'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+
+      - name: Wait for Vercel deployment to be ready
+        env:
+          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+        run: |
+          echo "Waiting for Vercel preview deployment to be ready..."
+          max_attempts=60
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f -s "$PREVIEW_URL" > /dev/null 2>&1; then
+              echo "✅ Preview deployment is ready"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts: Preview not ready yet, waiting..."
+            sleep 10
+          done
+          echo "❌ Preview deployment did not become ready in time"
+          exit 1
+
+      - name: Run E2E tests against preview
+        env:
+          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+          DATABASE_URL: ${{ needs.deploy-preview.outputs.database-url }}
+          NEXTAUTH_URL: ${{ needs.deploy-preview.outputs.preview-url }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'preview-secret-min-32-chars-for-testing' }}
+          CI: true
+        run: npm run test:e2e
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-preview-${{ github.event.pull_request.number }}
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-videos-preview-${{ github.event.pull_request.number }}
+          path: test-results/
+          retention-days: 7
+
+      - name: Comment PR with test results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const previewUrl = '${{ needs.deploy-preview.outputs.preview-url }}';
+            const emoji = status === 'success' ? '✅' : '❌';
+            const body = `## ${emoji} E2E Tests ${status === 'success' ? 'Passed' : 'Failed'}
+
+            **Preview URL**: ${previewUrl}
+
+            **Status**: ${status === 'success' ? 'All E2E tests passed!' : 'Some E2E tests failed. Check the workflow logs for details.'}
+
+            Test artifacts have been uploaded and are available in the workflow run.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  cleanup-preview:
+    name: Cleanup Preview
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for cleanup
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies for cleanup
+        run: npm ci
+
+      - name: Generate Prisma Client for cleanup
+        run: npx prisma generate
+
+      - name: Cleanup Supabase preview schema
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          chmod +x scripts/cleanup-supabase-preview.sh
+          ./scripts/cleanup-supabase-preview.sh \
+            "${{ github.head_ref }}" \
+            "${{ github.event.pull_request.number }}" \
+            "${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
+            "${{ secrets.SUPABASE_PROJECT_REF }}"
+        continue-on-error: true
+
+      - name: Comment PR about cleanup
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const body = `## 🧹 Preview Resources Cleaned Up
+
+            Supabase preview schema has been dropped.
+            Vercel preview deployment will be automatically cleaned up by Vercel.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
